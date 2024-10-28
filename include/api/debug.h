@@ -70,7 +70,7 @@ static inline void debug_printUserState(void)
 {
     tcb_t *tptr = NODE_STATE(ksCurThread);
     printf("Current thread: %s\n", TCB_PTR_DEBUG_PTR(tptr)->tcbName);
-    printf("Next instruction address: %lx\n", getRestartPC(tptr));
+    printf("Next instruction address: %lx\n", (word_t) getRestartPC(tptr));
     printf("Stack:\n");
     Arch_userStackTrace(tptr);
 }
@@ -119,8 +119,8 @@ static inline void debug_printTCB(tcb_t *tcb)
      * 4:  length of "Core" header
      * 4:  length of "Dom" header, but +1 for consistency with Prio/Core headers
      * 14: length of "InReleaseQueue" header */
-    printf("%-40s   %-16s   %-18p   %4lu", TCB_PTR_DEBUG_PTR(tcb)->tcbName, state,
-           (void *) getRestartPC(tcb), tcb->tcbPriority);
+    printf("%-40s   %-16s   %-18lx   %4lu", TCB_PTR_DEBUG_PTR(tcb)->tcbName, state,
+           (word_t)getRestartPC(tcb), tcb->tcbPriority);
 #ifdef CONFIG_ENABLE_SMP_SUPPORT
     printf("   %4lu", tcb->tcbAffinity);
 #endif
