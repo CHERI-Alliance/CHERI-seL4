@@ -1,0 +1,32 @@
+/*
+ * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+ * Copyright (c) 2024, Capabilities Ltd <heshamalmatary@capabilitieslimited.co.uk>
+ *
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
+/ {
+	chosen {
+		seL4,kernel-devices =
+		        &{/soc@0/interrupt-controller@40000000},
+            &{/soc@0/timer@60014000};
+	};
+
+    soc@0 {
+      timer@60014000 {
+			  compatible = "riscv,cpu-intc";
+			  reg = <0x60014000 0xc000>;
+        interrupts-extended = <0x01 0x03 0x01 0x07>;
+      };
+    };
+
+    reserved-memory {
+        #address-cells = <0x02>;
+        #size-cells = <0x02>;
+        ranges;
+        sbi@80000000 {
+            reg = <0x00000000 0x80000000 0x00000000 0x200000>;
+            no-map;
+        };
+    };
+};
