@@ -4,6 +4,14 @@
      SPDX-License-Identifier: GPL-2.0-only
 -->
 
+The CHERI-aware seL4 microkernel
+====================
+Disclaimer:
+This is an experimental fork of the seL4 microkernel that integrates CHERI
+extensions to enable support for running memory-safe CHERI C/C++ userspace
+applications. Please note that this CHERI-aware seL4 microkernel (CHERI-seL4)
+is currently not formally verified.
+
 The seL4 microkernel
 ====================
 
