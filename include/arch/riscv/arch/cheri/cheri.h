@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <arch/machine/registerset.h>
+
 #define CHERI_CAP_MODE 0
 #define CHERI_INT_MODE 1
 
@@ -38,4 +40,19 @@ static inline void *__capability CheriArch_get_pcc(void)
                  "modesw.int       \n"
                  :"=C"(pcc)::);
     return pcc;
+}
+
+static inline void CheriArch_initContext(user_context_t *context, void *__user pcc)
+{
+    context->registers[FaultIP] = (rword_t)pcc;
+
+    if (CheriArch_isIntegerMode(pcc)) {
+        void *__user root_ddc = CheriArch_get_pcc();
+        root_ddc = __builtin_cheri_perms_and(root_ddc, ~(__CHERI_CAP_PERMISSION_EXECUTE__));
+        root_ddc = __builtin_cheri_address_set(root_ddc, 0);
+        context->registers[DDC] = (rword_t)root_ddc;
+    } else {
+        /* Invalidate DDC; it shouldn't be used in capmode */
+        context->registers[DDC] = 0;
+    }
 }
