@@ -1,5 +1,7 @@
 /*
  * Copyright 2014, General Dynamics C4 Systems
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -76,6 +78,9 @@ struct vcpu {
     struct tcb *vcpuTCB;
     struct gicVCpuIface vgic;
     word_t regs[seL4_VCPUReg_Num];
+#if defined(CONFIG_HAVE_CHERI)
+    rword_t cregs[seL4_CHERI_VCPUReg_Num - seL4_VCPUReg_Num];
+#endif
     bool_t vppi_masked[n_VPPIEventIRQ];
 #ifdef CONFIG_VTIMER_UPDATE_VOFFSET
     /* word_t vcpu_padding; */
@@ -138,16 +143,29 @@ exception_t invokeVCPUReadReg(vcpu_t *vcpu, word_t field, bool_t call);
 exception_t invokeVCPUInjectIRQ(vcpu_t *vcpu, unsigned long index, virq_t virq);
 exception_t invokeVCPUSetTCB(vcpu_t *vcpu, tcb_t *tcb);
 exception_t invokeVCPUAckVPPI(vcpu_t *vcpu, VPPIEventIRQ_t vppi);
-static word_t vcpu_hw_read_reg(word_t reg_index);
-static void vcpu_hw_write_reg(word_t reg_index, word_t reg);
+static rword_t vcpu_hw_read_reg(word_t reg_index);
+static void vcpu_hw_write_reg(word_t reg_index, rword_t reg);
 
 static inline void vcpu_save_reg(vcpu_t *vcpu, word_t reg)
 {
+#if defined(CONFIG_HAVE_CHERI)
+    if (reg >= seL4_CHERI_VCPUReg_Num || vcpu == NULL) {
+        fail("ARM/HYP/CHERI: Invalid register index or NULL VCPU");
+        return;
+    }
+
+    if (reg < seL4_VCPUReg_Num) {
+        vcpu->regs[reg] = vcpu_hw_read_reg(reg);
+    } else if (reg < seL4_CHERI_VCPUReg_Num) {
+        vcpu->cregs[reg - seL4_VCPUReg_Num] = vcpu_hw_read_reg(reg);
+    }
+#else
     if (reg >= seL4_VCPUReg_Num || vcpu == NULL) {
         fail("ARM/HYP: Invalid register index or NULL VCPU");
         return;
     }
     vcpu->regs[reg] = vcpu_hw_read_reg(reg);
+#endif
 }
 
 static inline void vcpu_save_reg_range(vcpu_t *vcpu, word_t start, word_t end)
@@ -159,11 +177,24 @@ static inline void vcpu_save_reg_range(vcpu_t *vcpu, word_t start, word_t end)
 
 static inline void vcpu_restore_reg(vcpu_t *vcpu, word_t reg)
 {
+#if defined(CONFIG_HAVE_CHERI)
+    if (reg >= seL4_CHERI_VCPUReg_Num || vcpu == NULL) {
+        fail("ARM/HYP/CHERI: Invalid register index or NULL VCPU");
+        return;
+    }
+
+    if (reg < seL4_VCPUReg_Num) {
+        vcpu_hw_write_reg(reg, vcpu->regs[reg]);
+    } else if (reg < seL4_CHERI_VCPUReg_Num) {
+        vcpu_hw_write_reg(reg, vcpu->cregs[reg - seL4_VCPUReg_Num]);
+    }
+#else
     if (reg >= seL4_VCPUReg_Num || vcpu == NULL) {
         fail("ARM/HYP: Invalid register index or NULL VCPU");
         return;
     }
     vcpu_hw_write_reg(reg, vcpu->regs[reg]);
+#endif
 }
 
 static inline void vcpu_restore_reg_range(vcpu_t *vcpu, word_t start, word_t end)
@@ -173,22 +204,50 @@ static inline void vcpu_restore_reg_range(vcpu_t *vcpu, word_t start, word_t end
     }
 }
 
-static inline word_t vcpu_read_reg(vcpu_t *vcpu, word_t reg)
+static inline rword_t vcpu_read_reg(vcpu_t *vcpu, word_t reg)
 {
+#if defined(CONFIG_HAVE_CHERI)
+    if (reg >= seL4_CHERI_VCPUReg_Num || vcpu == NULL) {
+        fail("ARM/HYP/CHERI: Invalid register index or NULL VCPU");
+        return 0;
+    }
+
+    if (reg < seL4_VCPUReg_Num) {
+        return vcpu->regs[reg];
+    } else if (reg < seL4_CHERI_VCPUReg_Num) {
+        return vcpu->cregs[reg - seL4_VCPUReg_Num];
+    } else {
+        return 0;
+    }
+#else
     if (reg >= seL4_VCPUReg_Num || vcpu == NULL) {
         fail("ARM/HYP: Invalid register index or NULL VCPU");
         return 0;
     }
     return vcpu->regs[reg];
+#endif
 }
 
-static inline void vcpu_write_reg(vcpu_t *vcpu, word_t reg, word_t value)
+static inline void vcpu_write_reg(vcpu_t *vcpu, word_t reg, rword_t value)
 {
+#if defined(CONFIG_HAVE_CHERI)
+    if (reg >= seL4_CHERI_VCPUReg_Num || vcpu == NULL) {
+        fail("ARM/HYP/CHERI: Invalid register index or NULL VCPU");
+        return;
+    }
+
+    if (reg < seL4_VCPUReg_Num) {
+        vcpu->regs[reg] = value;
+    } else if (reg < seL4_CHERI_VCPUReg_Num) {
+        vcpu->cregs[reg - seL4_VCPUReg_Num] = value;
+    }
+#else
     if (reg >= seL4_VCPUReg_Num || vcpu == NULL) {
         fail("ARM/HYP: Invalid register index or NULL VCPU");
         return;
     }
     vcpu->regs[reg] = value;
+#endif
 }
 
 static inline VPPIEventIRQ_t irqVPPIEventIndex(irq_t irq)

@@ -21,8 +21,17 @@ void Arch_switchToThread(tcb_t *tcb)
 
 BOOT_CODE void Arch_configureIdleThread(tcb_t *tcb)
 {
+#if defined(CONFIG_HAVE_CHERI)
+    /* Derive an idle thread's PCC from the kernel's PCC */
+    void *__capability idle_pcc = __builtin_cheri_address_set(CheriArch_get_pcc(), (word_t)idle_thread);
+    setRegister(tcb, ELR_EL1, (rword_t)idle_pcc);
+
+    /* The idle thread should not be using any data memory (e.g., stack) */
+    setRegister(tcb, DDC, 0);
+#else
+    setRegister(tcb, ELR_EL1, (rword_t)&idle_thread);
+#endif
     setRegister(tcb, SPSR_EL1, PSTATE_IDLETHREAD);
-    setRegister(tcb, ELR_EL1, (word_t)&idle_thread);
 }
 
 void Arch_switchToIdleThread(void)

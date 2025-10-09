@@ -1,5 +1,7 @@
 /*
  * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -225,12 +227,16 @@ BOOT_CODE void map_kernel_frame(paddr_t paddr, pptr_t vaddr, vm_rights_t vm_righ
         attr_index = DEVICE_nGnRnE;
         shareable = 0;
     }
-    armKSGlobalKernelPT[GET_KPT_INDEX(vaddr, KLVL_FRM_ARM_PT_LVL(3))] = pte_pte_4k_page_new(uxn, paddr,
-                                                                                            0, /* global */
-                                                                                            1, /* access flag */
-                                                                                            shareable,
-                                                                                            APFromVMRights(vm_rights),
-                                                                                            attr_index);
+    armKSGlobalKernelPT[GET_KPT_INDEX(vaddr, KLVL_FRM_ARM_PT_LVL(3))] = pte_pte_4k_page_new(
+#if defined(CONFIG_HAVE_CHERI)
+                                                                            1, 1, 0, /* Enable capability loads/stores for the kernel */
+#endif
+                                                                            uxn, paddr,
+                                                                            0, /* global */
+                                                                            1, /* access flag */
+                                                                            shareable,
+                                                                            APFromVMRights(vm_rights),
+                                                                            attr_index);
 }
 
 BOOT_CODE void map_kernel_window(void)
@@ -269,6 +275,9 @@ BOOT_CODE void map_kernel_window(void)
     for (paddr = PADDR_BASE; paddr < PADDR_TOP; paddr += BIT(seL4_LargePageBits)) {
         armKSGlobalKernelPDs[GET_KPT_INDEX(vaddr, KLVL_FRM_ARM_PT_LVL(1))][GET_KPT_INDEX(vaddr,
                                                                                          KLVL_FRM_ARM_PT_LVL(2))] = pte_pte_page_new(
+#if defined(CONFIG_HAVE_CHERI)
+                                                                                                                        1, 1, 0, /* Enable capability loads/stores for the kernel */
+#endif
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
                                                                                                                         0, // XN
 #else
@@ -328,6 +337,9 @@ static BOOT_CODE void map_it_frame_cap(cap_t vspace_cap, cap_t frame_cap, bool_t
     assert(pte_pte_table_ptr_get_present(pd));
     pt = paddr_to_pptr(pte_pte_table_ptr_get_pt_base_address(pd));
     *(pt + GET_UPT_INDEX(vptr, ULVL_FRM_ARM_PT_LVL(3))) = pte_pte_4k_page_new(
+#if defined(CONFIG_HAVE_CHERI)
+                                                              1, 1, 0, /* Enable capability loads/stores for the root task */
+#endif
                                                               !executable,                    /* unprivileged execute never */
                                                               pptr_to_paddr(pptr),            /* page_base_address    */
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
@@ -702,11 +714,21 @@ static pte_t makeUserPagePTE(paddr_t paddr, vm_rights_t vm_rights, vm_attributes
     word_t shareable = cacheable ? SMP_TERNARY(SMP_SHARE, 0) : 0;
 
     if (page_size == ARMSmallPage) {
-        return pte_pte_4k_page_new(nonexecutable, paddr, nG, 1 /* access flag */,
-                                   shareable, APFromVMRights(vm_rights), attridx);
+        return pte_pte_4k_page_new(
+#if defined(CONFIG_HAVE_CHERI)
+                   /* cheriTODO: fine-grain capability permissions per-user */
+                   1, 1, 0, /* Enable capability loads/stores */
+#endif
+                   nonexecutable, paddr, nG, 1 /* access flag */,
+                   shareable, APFromVMRights(vm_rights), attridx);
     } else {
-        return pte_pte_page_new(nonexecutable, paddr, nG, 1 /* access flag */,
-                                shareable, APFromVMRights(vm_rights), attridx);
+        return pte_pte_page_new(
+#if defined(CONFIG_HAVE_CHERI)
+                   /* cheriTODO: fine-grain capability permissions per-user */
+                   1, 1, 0, /* Enable capability loads/stores */
+#endif
+                   nonexecutable, paddr, nG, 1 /* access flag */,
+                   shareable, APFromVMRights(vm_rights), attridx);
     }
 }
 
@@ -1688,8 +1710,8 @@ static exception_t decodeARMFrameInvocation(word_t invLabel, word_t length,
         }
 #endif
         setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
-        return performPageFlush(invLabel, find_ret.vspace_root, asid, vaddr + start, vaddr + end - 1,
-                                pstart);
+        return performPageFlush(invLabel, find_ret.vspace_root, asid, vaddr + (word_t)start,
+                                vaddr + (word_t)end - 1, pstart);
     }
 
     case ARMPageGetAddress:
@@ -1854,6 +1876,121 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
         fail("Invalid ARM arch cap type");
     }
 }
+
+#if defined(CONFIG_HAVE_CHERI)
+static exception_t invokeCheri_WriteMemCap(word_t vaddr, pptr_t pptr, word_t pageSizeBits, word_t *buffer)
+{
+    void *__user constructed_cap;
+    word_t cheri_base = getSyscallArg(1, buffer);
+    word_t cheri_addr = getSyscallArg(2, buffer);
+    word_t cheri_size = getSyscallArg(3, buffer);
+    CheriCapMeta_t cheri_meta = {.words[0] = getSyscallArg(4, buffer)};
+
+    if (CheriCapMeta_get_V(cheri_meta)) {
+        /* Construct a valid CHERI cap off PCC (almighty CHERI cap) */
+        constructed_cap = CheriArch_get_pcc();
+    } else {
+        /* Construct an untagged CHERI capability */
+        constructed_cap = (void *__user) cheri_addr;
+    }
+
+    constructed_cap = cheri_sel4_build_cap(constructed_cap,                  /* src */
+                                           cheri_base,                       /* base */
+                                           cheri_addr,                       /* address */
+                                           cheri_size,                       /* size */
+                                           CheriCapMeta_get_AP(cheri_meta),  /* perms */
+                                           cheri_addr & 0x1,                 /* capmode */
+                                           CheriCapMeta_get_T(cheri_meta) == -1, /* sentry */
+                                           1);                               /* user */
+    /* Perform the capability write */
+    *((void *__user *)((word_t)pptr + (vaddr & MASK(pageSizeBits)))) = constructed_cap;
+
+    dsb();
+
+    setRegister(NODE_STATE(ksCurThread), msgInfoRegister, wordFromMessageInfo(
+                    seL4_MessageInfo_new(0, 0, 0, 0)));
+
+    return EXCEPTION_NONE;
+}
+
+exception_t decodeCheriWriteMemoryCap(word_t length, word_t *buffer)
+{
+    cap_t vRootCap, pageCap;
+
+    if (length < 5 || current_extra_caps.excaprefs[0] == NULL
+        || current_extra_caps.excaprefs[1] == NULL) {
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    word_t vaddr = getSyscallArg(0, buffer);
+    vRootCap = current_extra_caps.excaprefs[0]->cap;
+    pageCap = current_extra_caps.excaprefs[1]->cap;
+
+    /* A valid VSpace cap must be passed in order to construct and write
+     * a valid CHERI capability to a user's VSpace memory.
+     */
+    if (!isValidVTableRoot(vRootCap)) {
+        userError("SysCheriWriteMemoryCap: Invalid VSpace cap");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_fault = seL4_Fault_CapFault_new(getExtraCPtr(buffer, 0), false);
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_get_capType(pageCap) != cap_frame_cap) {
+        userError("SysCheriWriteMemoryCap Invalid frame cap.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_fault = seL4_Fault_CapFault_new(getExtraCPtr(buffer, 1), false);
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_frame_cap_get_capFMappedASID(pageCap) != cap_vspace_cap_get_capVSMappedASID(vRootCap)) {
+        userError("SysCheriWriteMemoryCap Frame cap doesn't belong to the passed address space.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        current_fault = seL4_Fault_CapFault_new(getExtraCPtr(buffer, 1), false);
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    /* We can probably add VMReadWriteCheri to page caps, or to page_table caps to
+     * have extra layer of permissions granting the permission to construct and write
+     * new CHERI capabilities to a page and/or an address space
+     */
+    if (cap_frame_cap_get_capFVMRights(pageCap) != VMReadWrite) {
+        userError("SysCheriWriteMemoryCap: can't write memory, invalid page rights");
+        current_syscall_error.type = seL4_IllegalOperation;
+        current_fault = seL4_Fault_CapFault_new(getExtraCPtr(buffer, 1), false);
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    /* A destination address to write a CHERI capability to must be CLEN-aligned */
+    if (!IS_ALIGNED(vaddr, seL4_WordSizeBits + 1)) {
+        userError("SysCheriWriteMemoryCap: Unaligned vaddr. CHERI caps are only written to CLEN-aligned memory words");
+        current_syscall_error.type = seL4_AlignmentError;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    lookupPTSlot_ret_t ret = lookupPTSlot(PTE_PTR(pptr_of_cap(vRootCap)), vaddr);
+
+    if (unlikely(ret.ptBitsLeft != pageBitsForSize(cap_frame_cap_get_capFSize(pageCap)))) {
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pptr_t pptr = (pptr_t)paddr_to_pptr(pte_page_ptr_get_page_base_address(ret.ptSlot));
+
+    if (!pte_ptr_get_valid(ret.ptSlot) ||
+        (pte_pte_table_ptr_get_present(ret.ptSlot) && ret.ptBitsLeft > PAGE_BITS) ||
+        pptr != pptr_of_cap(pageCap)) {
+
+        userError("SysCheriWriteMemoryCap: can't write memory");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    /* Check if it's a device page or not? */
+
+    return invokeCheri_WriteMemCap(vaddr, pptr, ret.ptBitsLeft, buffer);
+}
+#endif
 
 #ifdef CONFIG_DEBUG_BUILD
 void kernelPrefetchAbort(word_t pc) VISIBLE;

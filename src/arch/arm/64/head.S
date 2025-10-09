@@ -1,6 +1,8 @@
 /*
  * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
  * Copyright 2021, HENSOLDT Cyber
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -75,8 +77,45 @@
 #define SCTLR   sctlr_el1
 #endif
 
+#if defined(CONFIG_HAVE_CHERI)
+#define CPACR_CEN_MASK    (0x3 << 18)
+#define CPACR_CEN_TRAP_NONE  (0x3 << 18) /* No traps */
+
+/* CCTLR_EL0 - Capability Control Register */
+#define CCTLR_SBL_MASK    (0x1 << 7) /* Capability sealing by branch and link */
+#define CCTLR_PERMVCT_MASK  (0x1 << 6) /* Permit access to CNTVCT w/o System */
+#endif
+
+/*
+ * Initialize morello on a cpu
+ */
+#if defined(CONFIG_HAVE_CHERI)
+ /* This macros is copied from CheriBSD */
+.macro morello_cpu_init
+  /* Enable Morello instructions at EL0 and EL1 */
+  mrs x5, cpacr_el1
+  bic x5, x5, CPACR_CEN_MASK
+  orr x5, x5, CPACR_CEN_TRAP_NONE
+  msr cpacr_el1, x5
+  isb
+
+  /*
+   * Allow access to CNTVCT_EL0 without PCC System permission and enable
+   * capability sealing for branch and link at EL0.
+   */
+  mrs x5, cctlr_el0
+  orr x5, x5, #(CCTLR_PERMVCT_MASK | CCTLR_SBL_MASK)
+  msr cctlr_el0, x5
+
+.endmacro
+#endif
+
 .section .boot.text, "ax"
 BEGIN_FUNC(_start)
+#if defined(CONFIG_HAVE_CHERI)
+  .arch_extension noc64
+  .arch_extension a64c
+#endif
     /* Save x4, x5, x6, x7 so we don't clobber it */
     mov     x14, x4
     mov     x15, x5
@@ -117,6 +156,13 @@ BEGIN_FUNC(_start)
     mov    sp, x4
 #endif /* ENABLE_SMP_SUPPORT */
 
+#if defined(CONFIG_HAVE_CHERI)
+    /* Initialize morello capability ISA and switch to C64 if needed */
+    morello_cpu_init
+
+    /* Save c3 (ventry) to that it doesn't get untagged */
+    mov     c18, c3
+#endif
     /* Attempt to workaround any known ARM errata. */
     stp     x0, x1, [sp, #-16]!
     stp     x2, x3, [sp, #-16]!
@@ -127,6 +173,10 @@ BEGIN_FUNC(_start)
     ldp     x4, x5, [sp], #16
     ldp     x2, x3, [sp], #16
     ldp     x0, x1, [sp], #16
+
+#if defined(CONFIG_HAVE_CHERI)
+    mov     c3, c18
+#endif
 
     /* Call bootstrapping implemented in C with parameters:
      *  x0: user image physical start address

@@ -1,6 +1,9 @@
 /*
  * Copyright 2014, General Dynamics C4 Systems
  * Copyright 2021, HENSOLDT Cyber
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
+ *
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -26,6 +29,10 @@
 
 #ifdef CONFIG_ARM_SMMU
 #include <drivers/smmu/smmuv2.h>
+#endif
+
+#if defined(CONFIG_HAVE_CHERI)
+#include <cheri/cheri.h>
 #endif
 
 #ifdef ENABLE_SMP_SUPPORT
@@ -227,7 +234,14 @@ BOOT_CODE static bool_t init_cpu(void)
 
 #ifdef CONFIG_ARCH_AARCH64
     /* initialise CPU's exception vector table */
+#if defined(CONFIG_HAVE_CHERI)
+    /* Derive a trap handler's capability from the kernel's PCC */
+    void *__capability vtable = CheriArch_get_pcc();
+    vtable = __builtin_cheri_address_set(vtable, (word_t)arm_vector_table);
+    setVtable((rword_t)vtable);
+#else
     setVtable((pptr_t)arm_vector_table);
+#endif
 #endif /* CONFIG_ARCH_AARCH64 */
 
     haveHWFPU = fpsimd_HWCapTest();
@@ -426,6 +440,31 @@ static BOOT_CODE bool_t try_init_kernel(
         };
     }
 
+#if defined(CONFIG_HAVE_CHERI)
+    /* Create CHERI capabilities for CHERI users. This includes BootInfo pointer and an
+     * IPC Buffer for the root task.
+     */
+    bi_frame_vptr = (vptr_t) cheri_sel4_build_cap(CheriArch_get_pcc(), /* src */
+                                                  bi_frame_vptr, /* base */
+                                                  bi_frame_vptr, /* address */
+                                                  BIT(seL4_BootInfoFrameBits), /* size */
+                                                  ~(__CHERI_CAP_PERMISSION_PERMIT_EXECUTE__), /* perms */
+                                                  0, /* capmode */
+                                                  0, /* sentry */
+                                                  1  /* user */
+                                                 );
+
+    ipcbuf_vptr = (vptr_t) cheri_sel4_build_cap(CheriArch_get_pcc(), /* src */
+                                                ipcbuf_vptr, /* base */
+                                                ipcbuf_vptr, /* address */
+                                                sizeof(seL4_IPCBuffer), /* size */
+                                                ~(__CHERI_CAP_PERMISSION_PERMIT_EXECUTE__), /* perms */
+                                                0, /* capmode */
+                                                0, /* sentry */
+                                                1  /* user */
+                                               );
+#endif
+
     /* The region of the initial thread is the user image + ipcbuf and boot info */
     word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
     v_region_t it_v_reg = {
@@ -439,7 +478,7 @@ static BOOT_CODE bool_t try_init_kernel(
          */
         printf("ERROR: userland image virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]"
                "exceeds USER_TOP (%"SEL4_PRIx_word")\n",
-               it_v_reg.start, it_v_reg.end, (word_t)USER_TOP);
+               (word_t)it_v_reg.start, (word_t)it_v_reg.end, (word_t)USER_TOP);
         return false;
     }
 
@@ -697,6 +736,11 @@ BOOT_CODE VISIBLE void init_kernel(
     NODE_STATE(ksCurTime) = getCurrentTime();
     NODE_STATE(ksConsumed) = 0;
 #endif
+
+#if defined(CONFIG_HAVE_CHERI)
+    CheriArch_init_user();
+#endif
+
     schedule();
     activateThread();
 }

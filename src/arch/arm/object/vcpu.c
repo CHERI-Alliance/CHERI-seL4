@@ -100,6 +100,10 @@ void vcpu_restore(vcpu_t *vcpu)
 
     /* restore registers */
     vcpu_restore_reg_range(vcpu, seL4_VCPURegSaveRange_start, seL4_VCPURegSaveRange_end);
+
+#if defined(CONFIG_HAVE_CHERI)
+    vcpu_restore_reg_range(vcpu, seL4_CheriVCPURegSaveRange_start, seL4_CheriVCPURegSaveRange_end);
+#endif
     vcpu_enable(vcpu);
 }
 
@@ -321,7 +325,11 @@ exception_t decodeVCPUWriteReg(cap_t cap, word_t length, word_t *buffer)
     }
     field = getSyscallArg(0, buffer);
     value = getSyscallArg(1, buffer);
+#if defined(CONFIG_HAVE_CHERI)
+    if (field >= seL4_CHERI_VCPUReg_Num) {
+#else
     if (field >= seL4_VCPUReg_Num) {
+#endif
         userError("VCPUWriteReg: Invalid field 0x%lx.", (long)field);
         current_syscall_error.type = seL4_InvalidArgument;
         current_syscall_error.invalidArgumentNumber = 1;
@@ -358,7 +366,11 @@ exception_t decodeVCPUReadReg(cap_t cap, word_t length, bool_t call, word_t *buf
 
     field = getSyscallArg(0, buffer);
 
+#if defined(CONFIG_HAVE_CHERI)
+    if (field >= seL4_CHERI_VCPUReg_Num) {
+#else
     if (field >= seL4_VCPUReg_Num) {
+#endif
         userError("VCPUReadReg: Invalid field 0x%lx.", (long)field);
         current_syscall_error.type = seL4_InvalidArgument;
         current_syscall_error.invalidArgumentNumber = 1;
