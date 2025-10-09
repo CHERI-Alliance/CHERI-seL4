@@ -158,6 +158,8 @@
             </description>
             <param dir="in" name="vspace" type="seL4_CPtr"
                 description="The VSpace root associated the CHERI capability is associated with"/>
+            <param dir="in" name="vcpu" type="seL4_CPtr"
+                description="The vCPU associated with this TCB, if any."/>
             <param dir="in" name="reg_idx" type="seL4_Word"
                 description="The source/destination CPU register to write a CHERI capability to"/>
             <param dir="in" name="cheri_base" type="seL4_Word"

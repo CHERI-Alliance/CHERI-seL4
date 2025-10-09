@@ -38,3 +38,17 @@ tagged_union seL4_Fault seL4_FaultType {
 #endif
 
 }
+
+#ifdef CONFIG_HAVE_CHERI
+-- Unpacked CHERI cap metadata passed to the kernel as an argument, from which the
+-- kernel could construct an actual (compressed) CHERI capability, besides other
+-- fields such as base, length, and address. The following format is just a
+-- software definition and does not correspond to an architectural CHERI capability.
+block CheriCapMeta {
+    padding         22
+    field AP        18
+    field T         15
+    field flags     8
+    field V         1
+}
+#endif
