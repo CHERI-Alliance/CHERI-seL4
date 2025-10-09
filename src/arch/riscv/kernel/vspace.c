@@ -1213,7 +1213,7 @@ static exception_t invokeCheri_WriteMemCap(word_t vaddr, pptr_t pptr, word_t pag
                                            cheri_addr,                       /* address */
                                            cheri_size,                       /* size */
                                            CheriCapMeta_get_AP(cheri_meta),  /* perms */
-                                           CheriCapMeta_get_M(cheri_meta),   /* flags */
+                                           CheriCapMeta_get_M(cheri_meta),   /* capmode */
                                            CheriCapMeta_get_CT(cheri_meta),  /* sentry */
                                            1);                               /* user */
     /* Perform the capability write */

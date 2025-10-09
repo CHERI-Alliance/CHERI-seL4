@@ -16,7 +16,7 @@ void *__capability CheriArch_BuildCap(void *__capability src, word_t base, word_
                                 addr,                       /* address */
                                 size,                       /* size */
                                 CheriCapMeta_get_AP(meta),  /* perms */
-                                CheriCapMeta_get_M(meta),   /* flags */
+                                CheriCapMeta_get_M(meta),   /* capmode */
                                 CheriCapMeta_get_CT(meta),  /* sentry */
                                 user);                      /* user */
 }
