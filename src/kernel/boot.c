@@ -542,19 +542,7 @@ BOOT_CODE tcb_t *create_initial_thread(cap_t root_cnode_cap, cap_t it_pd_cap, vp
      * binary or Rust code), set DDC to almighty in order to be in compatible mode
      * running hybrid/legacy code.
      */
-    if (CheriArch_isIntegerMode((void *__user) ui_v_entry)) {
-        void *__user root_ddc = cheri_sel4_build_cap(
-                                    CheriArch_get_pcc(),   /* src */
-                                    0,                     /* base */
-                                    0,                     /* address */
-                                    UINTPTR_MAX,           /* size */
-                                    ~(__CHERI_CAP_PERMISSION_EXECUTE__), /* perms */
-                                    CHERI_INT_MODE,        /* flags */
-                                    0,                     /* sentry */
-                                    1);                    /* user */
-
-        setRegister(tcb, DDC, (rword_t)root_ddc);
-    }
+    CheriArch_initContext(&tcb->tcbArch.tcbContext, (void *__user) ui_v_entry);
 #endif
 
     /* initialise TCB */

@@ -2118,7 +2118,8 @@ word_t setMRs_syscall_error(tcb_t *thread, word_t *receiveIPCBuffer)
 }
 
 #if defined(CONFIG_HAVE_CHERI)
-static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx, bool_t srcPCC, word_t *buffer)
+static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx, bool_t srcPCC, bool_t user,
+                                             word_t *buffer)
 {
     void *__user constructed_cap;
     word_t cheri_base = getSyscallArg(1, buffer);
@@ -2152,7 +2153,7 @@ static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx,
                                          cheri_addr,                       /* address */
                                          cheri_size,                       /* size */
                                          cheri_meta,                       /* meta */
-                                         1);                               /* user */
+                                         user);                            /* user */
 
     setRegister(tcb, tcb_reg_idx, (rword_t)constructed_cap);
     setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
@@ -2163,16 +2164,18 @@ static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx,
 exception_t decodeCheriWriteRegister(cap_t tcb_cap, word_t length, word_t *buffer)
 {
     cap_t vRootCap;
+    UNUSED cap_t vCPUCap;
+    bool_t user = 1; /* By default, build a user cap without ASR permission */
 
     if (length < 5 || current_extra_caps.excaprefs[0] == NULL) {
         current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-
     tcb_t *tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(tcb_cap));
     word_t reg_idx = getSyscallArg(0, buffer);
     vRootCap   = current_extra_caps.excaprefs[0]->cap;
+    vCPUCap   = current_extra_caps.excaprefs[1]->cap;
     register_t tcb_reg_idx;
 
     if (tcb == NODE_STATE(ksCurThread)) {
@@ -2193,7 +2196,19 @@ exception_t decodeCheriWriteRegister(cap_t tcb_cap, word_t length, word_t *buffe
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-    return invokeCheri_WriteRegister(tcb, tcb_reg_idx, isValidVTableRoot(vRootCap), buffer);
+#if defined(CONFIG_ARM_HYPERVISOR_SUPPORT)
+    /* CHERI capabiltiies for VMs (eg PCC) may need ASR permissions. For instance,
+     * a VM boots with almighty PCC with ASR permission. If the user task (eg VMM
+     * or root task) creating a VM wants to create such a CHERI capability, it will
+     * need to pass an seL4 vCPU capability that's associated with the TCB capability.
+     * Otherwise, the ASR permission will be 0 (ie just a user capability).
+     */
+    if (cap_get_capType(vCPUCap) == cap_vcpu_cap) {
+        user = tcb->tcbArch.tcbVCPU != VCPU_PTR(cap_vcpu_cap_get_capVCPUPtr(vCPUCap));
+    }
+#endif
+
+    return invokeCheri_WriteRegister(tcb, tcb_reg_idx, isValidVTableRoot(vRootCap), user, buffer);
 }
 
 static exception_t invokeCheri_ReadRegister(tcb_t *tcb, register_t tcb_reg_idx, bool_t call, word_t *buffer)

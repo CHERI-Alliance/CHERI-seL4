@@ -1,5 +1,7 @@
 /*
  * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -295,40 +297,40 @@ static inline word_t readISR(void)
     return (word_t)reg;
 }
 
-static inline word_t readVBAR(void)
+static inline rword_t readVBAR(void)
 {
-    word_t reg;
-    MRS(REG_VBAR_EL1, reg);
+    rword_t reg;
+    PMRS(REG_VBAR_EL1, reg);
     return reg;
 }
 
-static inline void writeVBAR(word_t reg)
+static inline void writeVBAR(rword_t reg)
 {
-    MSR(REG_VBAR_EL1, reg);
+    PMSR(REG_VBAR_EL1, reg);
 }
 
-static inline word_t readSP_EL1(void)
+static inline rword_t readSP_EL1(void)
 {
-    word_t reg;
-    MRS(REG_SP_EL1, reg);
+    rword_t reg;
+    PMRS(REG_SP_EL1, reg);
     return reg;
 }
 
-static inline void writeSP_EL1(word_t reg)
+static inline void writeSP_EL1(rword_t reg)
 {
-    MSR(REG_SP_EL1, reg);
+    PMSR(REG_SP_EL1, reg);
 }
 
-static inline word_t readELR_EL1(void)
+static inline rword_t readELR_EL1(void)
 {
-    word_t reg;
+    rword_t reg;
     MRS(REG_ELR_EL1, reg);
     return reg;
 }
 
-static inline void writeELR_EL1(word_t reg)
+static inline void writeELR_EL1(rword_t reg)
 {
-    MSR(REG_ELR_EL1, reg);
+    PMSR(REG_ELR_EL1, reg);
 }
 
 static inline word_t readSPSR_EL1(void)
@@ -432,9 +434,35 @@ static inline void setHCR(word_t reg)
     MSR(REG_HCR_EL2, reg);
 }
 
-static word_t vcpu_hw_read_reg(word_t reg_index)
+#if defined(CONFIG_HAVE_CHERI)
+static inline void writeDDC_EL1(rword_t reg)
 {
-    word_t reg = 0;
+    CMSR("ddc_el1", reg);
+}
+
+static inline void writeCCTLR_EL1(word_t reg)
+{
+    MSR("cctlr_el1", reg);
+}
+
+static inline rword_t readDDC_EL1(void)
+{
+    rword_t reg;
+    CMRS("ddc_el1", reg);
+    return reg;
+}
+
+static inline word_t readCCTLR_EL1(void)
+{
+    word_t reg;
+    MRS("cctlr_el1", reg);
+    return reg;
+}
+#endif
+
+static rword_t vcpu_hw_read_reg(word_t reg_index)
+{
+    rword_t reg = 0;
     switch (reg_index) {
     case seL4_VCPUReg_SCTLR:
         return getSCTLR();
@@ -484,6 +512,14 @@ static word_t vcpu_hw_read_reg(word_t reg_index)
         return readCNTKCTL_EL1();
     case seL4_VCPUReg_VMPIDR_EL2:
         return readVMPIDR_EL2();
+#if defined(CONFIG_HAVE_CHERI)
+    case seL4_VCPUReg_DDC_EL1:
+        return readDDC_EL1();
+        break;
+    case seL4_VCPUReg_CCTLR_EL1:
+        return readCCTLR_EL1();
+        break;
+#endif
     default:
         fail("ARM/HYP: Invalid register index");
     }
@@ -491,7 +527,7 @@ static word_t vcpu_hw_read_reg(word_t reg_index)
     return reg;
 }
 
-static void vcpu_hw_write_reg(word_t reg_index, word_t reg)
+static void vcpu_hw_write_reg(word_t reg_index, rword_t reg)
 {
     switch (reg_index) {
     case seL4_VCPUReg_SCTLR:
@@ -566,6 +602,14 @@ static void vcpu_hw_write_reg(word_t reg_index, word_t reg)
     case seL4_VCPUReg_VMPIDR_EL2:
         writeVMPIDR_EL2(reg);
         break;
+#if defined(CONFIG_HAVE_CHERI)
+    case seL4_VCPUReg_DDC_EL1:
+        writeDDC_EL1(reg);
+        break;
+    case seL4_VCPUReg_CCTLR_EL1:
+        writeCCTLR_EL1(reg);
+        break;
+#endif
     default:
         fail("ARM/HYP: Invalid register index");
     }
@@ -606,6 +650,11 @@ static inline void vcpu_init_vtcr(void)
     vtcr_el2 |= VTCR_EL2_SH0(SH0_INNER);                     // inner shareable
     vtcr_el2 |= VTCR_EL2_TG0(TG0_4K);                        // 4KiB page size
     vtcr_el2 |= BIT(31);                                     // reserved as 1
+#if defined(CONFIG_HAVE_CHERI)
+    vtcr_el2 |= BIT(25);                                     // HWU59 (Enable CHERI' CDBM)
+    vtcr_el2 |= BIT(26);                                     // HWU60 (Enable CHERI's PTE.SC)
+    vtcr_el2 |= BIT(27);                                     // HWU61 (Enable CHERI's PTE.LC)
+#endif
 
     MSR(REG_VTCR_EL2, vtcr_el2);
     isb();
@@ -619,6 +668,10 @@ static inline void armv_vcpu_boot_init(void)
 
     hcr_el2 = HCR_NATIVE;
     MSR(REG_HCR_EL2, hcr_el2);
+#if defined(CONFIG_HAVE_CHERI)
+    /* Disable privileged capability creating instructions (SCTAG/STCT) in EL1 */
+    MSR("chcr_el2", 0);
+#endif
     isb();
 
     /* set the SCTLR_EL1 for running native seL4 threads */
@@ -636,6 +689,11 @@ static inline void armv_vcpu_save(vcpu_t *vcpu, bool_t active)
     if (active) {
         vcpu_save_reg(vcpu, seL4_VCPUReg_CPACR);
     }
+
+#if defined(CONFIG_HAVE_CHERI)
+    vcpu_save_reg_range(vcpu, seL4_CheriVCPURegSaveRange_start, seL4_CheriVCPURegSaveRange_end);
+#endif
+
     vcpu_save_reg_range(vcpu, seL4_VCPURegSaveRange_start, seL4_VCPURegSaveRange_end);
 
 #ifdef ARM_HYP_CP14_SAVE_AND_RESTORE_VCPU_THREADS
@@ -699,6 +757,13 @@ static inline void vcpu_disable(vcpu_t *vcpu)
      * used to trap the FPU instructions to EL2.
      */
     enableFpuEL01();
+#if defined(CONFIG_HAVE_CHERI)
+    /* Allow CHERI instructions in EL0 and EL1 for native
+     * threads by setting the CPACR_EL1. The CPTR_EL2 is
+     * used to trap the CHERI instructions to EL2.
+     */
+    CheriArch_init_user();
+#endif
     if (likely(vcpu)) {
         /* Save virtual timer state */
         save_virt_timer(vcpu);
@@ -710,6 +775,9 @@ static inline void vcpu_disable(vcpu_t *vcpu)
 static inline void armv_vcpu_init(vcpu_t *vcpu)
 {
     vcpu_write_reg(vcpu, seL4_VCPUReg_SCTLR, SCTLR_EL1_VM);
+#if defined(CONFIG_HAVE_CHERI)
+    vcpu_write_reg(vcpu, seL4_VCPUReg_DDC_EL1, (rword_t)__builtin_cheri_address_set(CheriArch_get_pcc(), 0));
+#endif
 }
 
 static inline bool_t armv_handleVCPUFault(word_t hsr)

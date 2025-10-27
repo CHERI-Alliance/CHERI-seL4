@@ -310,7 +310,7 @@ static BOOT_CODE bool_t try_init_kernel(
                                                   bi_frame_vptr, /* address */
                                                   BIT(seL4_BootInfoFrameBits), /* size */
                                                   ~(__CHERI_CAP_PERMISSION_EXECUTE__), /* perms */
-                                                  0, /* flags */
+                                                  0, /* capmode */
                                                   0, /* sentry */
                                                   1  /* user */
                                                  );
@@ -322,7 +322,7 @@ static BOOT_CODE bool_t try_init_kernel(
                                                 ~(__CHERI_CAP_PERMISSION_EXECUTE__ | /* perms */
                                                   __CHERI_CAP_PERMISSION_CAPABILITY__
                                                  ),
-                                                0, /* flags */
+                                                0, /* capmode */
                                                 0, /* sentry */
                                                 1  /* user */
                                                );

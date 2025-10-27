@@ -1,5 +1,7 @@
 /*
  * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+ * Copyright 2024-2025, Capabilities Limited
+ * CHERI support contributed by Capabilities Limited was developed by Hesham Almatary
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -22,6 +24,7 @@
 #define PMODE_EL1t              4
 #define PMODE_EL1h              5
 #define PMODE_EL2h              9
+#define PMODE_C64               (1 << 26)
 
 /* DAIF register */
 #define DAIF_FIRQ               (1 << 6)
@@ -64,16 +67,25 @@
 #define PSTATE_IDLETHREAD   (PMODE_FIRQ | PMODE_EL2h | PSTATE_EXTRA_FLAGS)
 #else
 #define PSTATE_IDLETHREAD   (PMODE_FIRQ | PMODE_EL1h | PSTATE_EXTRA_FLAGS)
-#endif
+#endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
+
+#if defined(CONFIG_HAVE_CHERI)
+/* Register size is always 16 bytes when CHERI is enabled, whether hybrid or purecap */
+#define REGSIZE 16
+#else /* !CONFIG_HAVE_CHERI */
+#define REGSIZE 8
+#endif /* CONFIG_HAVE_CHERI */
+
 
 /* Offsets within the user context, these need to match the order in
  * register_t below */
-#define PT_LR                       (30 * 8)
-#define PT_SP_EL0                   (31 * 8)
-#define PT_ELR_EL1                  (32 * 8)
-#define PT_SPSR_EL1                 (33 * 8)
-#define PT_FaultIP                  (34 * 8)
-#define PT_TPIDR_EL0                (35 * 8)
+#define PT_LR                       (30 * REGSIZE)
+#define PT_SP_EL0                   (31 * REGSIZE)
+#define PT_ELR_EL1                  (32 * REGSIZE)
+#define PT_SPSR_EL1                 (33 * REGSIZE)
+#define PT_FaultIP                  (34 * REGSIZE)
+#define PT_TPIDR_EL0                (35 * REGSIZE)
+#define PT_DDC_EL0                  (37 * REGSIZE)
 
 #ifndef __ASSEMBLER__ /* C only definitions */
 
@@ -150,14 +162,19 @@ enum _register {
 #elif defined(CONFIG_ARM_TLS_REG_TPIDRURO)
     TLS_BASE = TPIDRRO_EL0,
 #endif
-    n_contextRegisters          = 37,
+
+#if defined(CONFIG_HAVE_CHERI)
+    DDC = 37, /* DDC_EL0 */
+#endif
+
+    n_contextRegisters,
 };
 
 #define NEXT_PC_REG ELR_EL1
 
-compile_assert(sp_offset_correct, SP_EL0 *sizeof(word_t) == PT_SP_EL0)
-compile_assert(lr_svc_offset_correct, ELR_EL1 *sizeof(word_t) == PT_ELR_EL1)
-compile_assert(faultinstruction_offset_correct, FaultIP *sizeof(word_t) == PT_FaultIP)
+compile_assert(sp_offset_correct, SP_EL0 *sizeof(rword_t) == PT_SP_EL0)
+compile_assert(lr_svc_offset_correct, ELR_EL1 *sizeof(rword_t) == PT_ELR_EL1)
+compile_assert(faultinstruction_offset_correct, FaultIP *sizeof(rword_t) == PT_FaultIP)
 
 typedef word_t register_t;
 
@@ -269,7 +286,7 @@ typedef struct user_fpu_state {
  * of the current thread's registers. The assert below should help.
  */
 struct user_context {
-    word_t registers[n_contextRegisters];
+    rword_t registers[n_contextRegisters];
 #ifdef ARM_BASE_CP14_SAVE_AND_RESTORE
     user_breakpoint_state_t breakpointState;
 #endif /* ARM_BASE_CP14_SAVE_AND_RESTORE */
@@ -278,6 +295,10 @@ struct user_context {
 #endif /* CONFIG_HAVE_FPU */
 };
 typedef struct user_context user_context_t;
+
+#if defined(CONFIG_HAVE_CHERI)
+#include <cheri/cheri.h>
+#endif
 
 unverified_compile_assert(registers_are_first_member_of_user_context,
                           OFFSETOF(user_context_t, registers) == 0)
@@ -295,5 +316,25 @@ static inline void Arch_initContext(user_context_t *context)
 #endif
 }
 
+/* Definitions for inlinle assembly */
+#if defined(CONFIG_HAVE_CHERI)
+#define REG(n) "c" STRINGIFY(n)
+#define REGN(name) "c" STRINGIFY(name)
+#define ASM_REG_CONSTR "C"
+#else
+#define REG(n) "x" STRINGIFY(n)
+#define REGN(name) STRINGIFY(name)
+#define ASM_REG_CONSTR "r"
+#endif
+
 #endif /* !__ASSEMBLER__ */
 
+#ifdef __ASSEMBLER__
+#if defined(CONFIG_HAVE_CHERI)
+#define REG(n) c##n
+#define REGN(name) c##name
+#else
+#define REG(n) x##n
+#define REGN(name) name
+#endif
+#endif

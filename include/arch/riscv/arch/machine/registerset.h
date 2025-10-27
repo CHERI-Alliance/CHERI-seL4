@@ -17,10 +17,6 @@
 #include <util.h>
 #include <arch/types.h>
 
-#if defined(CONFIG_HAVE_CHERI)
-#include <cheri/cheri.h>
-#endif
-
 enum _register {
 
     ra = 0, LR = 0,
@@ -136,6 +132,9 @@ static inline rword_t CONST sanitiseRegister(register_t reg, rword_t v, bool_t a
     return v;
 }
 
+#if defined(CONFIG_HAVE_CHERI)
+#include <cheri/cheri.h>
+#endif
 
 #define EXCEPTION_MESSAGE \
  {\
