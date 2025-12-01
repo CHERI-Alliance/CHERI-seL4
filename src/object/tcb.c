@@ -2122,6 +2122,7 @@ static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx,
                                              word_t *buffer)
 {
     void *__user constructed_cap;
+    void *__user src_cap;
     word_t cheri_base = getSyscallArg(1, buffer);
     word_t cheri_addr = getSyscallArg(2, buffer);
     word_t cheri_size = getSyscallArg(3, buffer);
@@ -2133,29 +2134,43 @@ static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx,
          * off the kernel's PCC (almighty CHERI cap).
          */
         if (srcPCC) {
-            constructed_cap = CheriArch_get_pcc();
+            src_cap = CheriArch_get_pcc();
         } else {
             /* If the user didn't pass a valid VSpace cap, construct a CHERI cap
              * off the requested reg_idx. It may or may not be tagged, we don't
              * care.
              */
-            constructed_cap = (void *__user) getRegister(tcb, tcb_reg_idx);
+            src_cap = (void *__user) getRegister(tcb, tcb_reg_idx);
         }
     } else {
         /* The user requested to write an untagged CHERI cap, so just set the source
          * capability to an untagged CHERI cap with the address.
          */
-        constructed_cap = (void *__user) cheri_addr;
+        src_cap = (void *__user) cheri_addr;
     }
 
-    constructed_cap = CheriArch_BuildCap(constructed_cap,                  /* src */
+    /* CheriArch_BuildCap will only use src_cap to derive a constructed_cap from.
+     * If src_cap is invalid or the requested metadata to construct a new cap from
+     * violates CHERI security (eg requesting more bounds/perms than of src_cap),
+     * the returned constructed_cap will also be invalid.
+     */
+    constructed_cap = CheriArch_BuildCap(src_cap,                          /* src */
                                          cheri_base,                       /* base */
                                          cheri_addr,                       /* address */
                                          cheri_size,                       /* size */
                                          cheri_meta,                       /* meta */
                                          user);                            /* user */
 
-    setRegister(tcb, tcb_reg_idx, (rword_t)constructed_cap);
+    /* If the constructed capability is the same as the source capability, don't overwrite
+     * the destintation. This handles the case when src_cap is sealed and constructed_cap
+     * (the requested one) is also sealed and equal, in which case constructed_cap's tag
+     * will be invalid. It is safe to compare caps with cleared tags for this check here
+     * as constructed_cap is derived from src_cap, even if src_cap is untagged.
+     */
+    if (!__builtin_cheri_equal_exact(constructed_cap, __builtin_cheri_tag_clear(src_cap))) {
+        setRegister(tcb, tcb_reg_idx, (rword_t)constructed_cap);
+    }
+
     setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
 
     return EXCEPTION_NONE;
