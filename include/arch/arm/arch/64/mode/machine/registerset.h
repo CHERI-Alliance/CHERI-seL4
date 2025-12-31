@@ -165,9 +165,11 @@ enum _register {
 
 #if defined(CONFIG_HAVE_CHERI)
     DDC = 37, /* DDC_EL0 */
+    n_contextRegisters = 38,
+#else
+    n_contextRegisters = 37,
 #endif
 
-    n_contextRegisters,
 };
 
 #define NEXT_PC_REG ELR_EL1
