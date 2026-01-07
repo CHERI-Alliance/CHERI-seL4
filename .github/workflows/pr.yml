@@ -10,10 +10,12 @@ on: [pull_request, workflow_dispatch]
 
 jobs:
   pr-checks:
+    runs-on: the-capable-hub-aws-ci
     name: Checks
     uses: seL4/ci-actions/.github/workflows/pr.yml@master
 
   preprocess:
+    runs-on: the-capable-hub-aws-ci
     name: Preprocess
     runs-on: ubuntu-latest
     strategy:

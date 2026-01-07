@@ -14,5 +14,6 @@ on:
 
 jobs:
   checks:
+    runs-on: the-capable-hub-aws-ci
     name: Checks
     uses: seL4/ci-actions/.github/workflows/push.yml@master
