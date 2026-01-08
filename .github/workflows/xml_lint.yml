@@ -26,7 +26,7 @@ on:
 jobs:
   xmllint:
     name: XML Lint
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     steps:
     - name: apt-get update
       run: sudo apt-get update

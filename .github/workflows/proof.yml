@@ -11,7 +11,7 @@ on:
 jobs:
   cproof:
     name: C Proofs
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     # run on any normal trigger when the label exists, and run when the label is added
     # don't run again when other labels are added
     if: ${{ github.repository_owner == 'seL4' &&

@@ -12,10 +12,12 @@ jobs:
   pr-checks:
     name: Checks
     uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/pr.yml@michaelcobb/capable-hub-ci
+    with:
+      runner: the-capable-hub-aws-ci
 
   preprocess:
     name: Preprocess
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     strategy:
       fail-fast: false
       matrix:

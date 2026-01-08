@@ -15,7 +15,7 @@ on:
 jobs:
   code:
     name: Code Freeze
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     outputs:
       xml: ${{ steps.repo.outputs.xml }}
     steps:
@@ -28,7 +28,7 @@ jobs:
   preprocess:
     name: Preprocess
     needs: code
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     strategy:
       matrix:
         arch: [ARM, ARM_HYP, AARCH64, RISCV64, X64]
@@ -41,7 +41,7 @@ jobs:
   preprocess-mcs:
     name: Preprocess (MCS)
     needs: code
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     strategy:
       matrix:
         arch: [RISCV64]
@@ -55,7 +55,7 @@ jobs:
     name: Deploy manifest
     needs: [code, preprocess]
     if: ${{ github.repository_owner == 'seL4' }}
-    runs-on: ubuntu-22.04
+    runs-on: the-capable-hub-aws-ci
     steps:
     - uses: seL4/ci-actions/l4v-deploy@master
       with:

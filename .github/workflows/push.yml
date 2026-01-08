@@ -16,3 +16,5 @@ jobs:
   checks:
     name: Checks
     uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/push.yml@michaelcobb/capable-hub-ci
+    with:
+      runner: the-capable-hub-aws-ci
