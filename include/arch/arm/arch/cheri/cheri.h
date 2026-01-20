@@ -54,6 +54,11 @@ static inline void *__capability CheriArch_get_pcc(void)
     return __builtin_cheri_program_counter_get();
 }
 
+static inline void *__capability CheriArch_clearTag(void *__capability src)
+{
+    return __builtin_cheri_tag_clear(src);
+}
+
 static inline void CheriArch_initContext(user_context_t *context, void *__user pcc)
 {
     context->registers[FaultIP] = (rword_t)pcc;
