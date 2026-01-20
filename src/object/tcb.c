@@ -2167,7 +2167,7 @@ static exception_t invokeCheri_WriteRegister(tcb_t *tcb, register_t tcb_reg_idx,
      * will be invalid. It is safe to compare caps with cleared tags for this check here
      * as constructed_cap is derived from src_cap, even if src_cap is untagged.
      */
-    if (!__builtin_cheri_equal_exact(constructed_cap, __builtin_cheri_tag_clear(src_cap))) {
+    if (!__builtin_cheri_equal_exact(constructed_cap, CheriArch_clearTag(src_cap))) {
         setRegister(tcb, tcb_reg_idx, (rword_t)constructed_cap);
     }
 
