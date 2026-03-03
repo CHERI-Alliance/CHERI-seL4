@@ -23,6 +23,7 @@ jobs:
   code:
     name: Freeze Code
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     outputs:
       xml: ${{ steps.repo.outputs.xml }}
     steps:
@@ -36,6 +37,7 @@ jobs:
     name: Simulation
     needs: code
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     strategy:
       matrix:
         march: [armv7a, armv8a, nehalem, rv32imac, rv64imac]
@@ -51,6 +53,7 @@ jobs:
     name: HW Build
     needs: code
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     strategy:
       matrix:
         # There is no "rv32imac" hardware yet.
@@ -73,6 +76,7 @@ jobs:
     name: Matrix
     needs: hw-build
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -83,6 +87,7 @@ jobs:
     name: HW Run
     if: ${{ github.repository_owner == 'seL4' }}
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     needs: [sim, the_matrix]
     strategy:
       fail-fast: false
@@ -113,6 +118,7 @@ jobs:
     name: Deploy manifest
     if: ${{ github.repository_owner == 'seL4' }}
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     needs: [code, hw-run]
     steps:
     - name: Deploy

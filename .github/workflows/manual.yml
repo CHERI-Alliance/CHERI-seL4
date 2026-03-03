@@ -16,6 +16,7 @@ jobs:
   manual:
     name: Build PDF
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     steps:
     - uses: seL4/ci-actions/seL4-manual@master
     - uses: actions/upload-artifact@v4

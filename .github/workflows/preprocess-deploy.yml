@@ -16,6 +16,7 @@ jobs:
   code:
     name: Code Freeze
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     outputs:
       xml: ${{ steps.repo.outputs.xml }}
     steps:
@@ -29,6 +30,7 @@ jobs:
     name: Preprocess
     needs: code
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     strategy:
       matrix:
         arch: [ARM, ARM_HYP, AARCH64, RISCV64, X64]
@@ -42,6 +44,7 @@ jobs:
     name: Preprocess (MCS)
     needs: code
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     strategy:
       matrix:
         arch: [RISCV64]
@@ -56,6 +59,7 @@ jobs:
     needs: [code, preprocess]
     if: ${{ github.repository_owner == 'seL4' }}
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     steps:
     - uses: seL4/ci-actions/l4v-deploy@master
       with:

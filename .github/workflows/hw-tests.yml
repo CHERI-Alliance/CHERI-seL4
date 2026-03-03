@@ -21,6 +21,7 @@ jobs:
     secrets: inherit
     with:
       runner: the-capable-hub-aws-ci
+      container-image: capablehub/tch-ubuntu-24-builder:latest
 
   sel4bench:
     name: seL4Bench
@@ -28,3 +29,4 @@ jobs:
     secrets: inherit
     with:
       runner: the-capable-hub-aws-ci
+      container-image: capablehub/tch-ubuntu-24-builder:latest

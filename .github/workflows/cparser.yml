@@ -18,5 +18,6 @@ jobs:
   cparser:
     name: C Parser
     runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     steps:
     - uses: The-Capable-Hub/CHERI-seL4-ci-actions/cparser-run@michaelcobb/capable-hub-ci
