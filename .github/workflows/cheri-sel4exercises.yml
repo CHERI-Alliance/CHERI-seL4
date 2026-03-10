@@ -2,9 +2,9 @@
 #
 # SPDX-License-Identifier: BSD-2-Clause
 
-# sel4exercises runs
+# cheri-sel4exercises runs
 
-name: seL4Exercises
+name: CHERI-seL4Exercises
 
 on:
   pull_request:
@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  exercises:
-    name: Exercises
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4exercises.yml@michaelcobb/capable-hub-ci
+  cheri-exercises:
+    name: CHERI Exercises
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/cheri-sel4exercises.yml@michaelcobb/capable-hub-ci
     with:
       runner: the-capable-hub-aws-ci
       container-image: trustworthysystems/sel4:latest
