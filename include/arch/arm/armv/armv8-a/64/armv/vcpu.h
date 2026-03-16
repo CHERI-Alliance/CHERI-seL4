@@ -324,7 +324,7 @@ static inline void writeSP_EL1(rword_t reg)
 static inline rword_t readELR_EL1(void)
 {
     rword_t reg;
-    MRS(REG_ELR_EL1, reg);
+    PMRS(REG_ELR_EL1, reg);
     return reg;
 }
 
