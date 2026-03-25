@@ -13,7 +13,8 @@ jobs:
   trigger:
     name: Repository Dispatch
     if: ${{ github.repository_owner == 'seL4' }}
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     steps:
     - uses: seL4/ci-actions/trigger@master
       with:

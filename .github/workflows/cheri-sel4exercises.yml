@@ -2,11 +2,9 @@
 #
 # SPDX-License-Identifier: BSD-2-Clause
 
-# sel4test simulation runs
-#
-# See sel4test-sim/builds.yml in the repo seL4/ci-actions for configs.
+# cheri-sel4exercises runs
 
-name: seL4Test
+name: CHERI-seL4Exercises
 
 on:
   pull_request:
@@ -17,8 +15,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  sim:
-    name: Sim
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-sim.yml@cheri
+  cheri-exercises:
+    name: CHERI Exercises
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/cheri-sel4exercises.yml@cheri
     with:
       runner: the-capable-hub-aws-ci
+      container-image: trustworthysystems/sel4:latest

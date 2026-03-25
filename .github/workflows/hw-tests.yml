@@ -17,10 +17,16 @@ on:
 jobs:
   sel4test:
     name: seL4Test
-    uses: seL4/ci-actions/.github/workflows/sel4test-hw.yml@master
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-hw.yml@cheri
     secrets: inherit
+    with:
+      runner: the-capable-hub-aws-ci
+      container-image: capablehub/tch-ubuntu-24-builder:latest
 
   sel4bench:
     name: seL4Bench
-    uses: seL4/ci-actions/.github/workflows/sel4bench-hw.yml@master
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4bench-hw.yml@cheri
     secrets: inherit
+    with:
+      runner: the-capable-hub-aws-ci
+      container-image: capablehub/tch-ubuntu-24-builder:latest

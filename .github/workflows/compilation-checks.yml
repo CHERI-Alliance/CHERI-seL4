@@ -23,16 +23,24 @@ concurrency:
 jobs:
   standalone_kernel:
     name: kernel
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
     strategy:
       fail-fast: false
       matrix:
         # RISCV32 and IA32 are left out, as they have no verified config
         arch: [ARM, ARM_HYP, AARCH64, RISCV64, X64]
         compiler: [gcc, llvm]
+        arch_ext: [""]
+        include:
+          - arch: RISCV64
+            compiler: llvm
+            arch_ext: "RVY"
+            docker_base_img: capablehub/cheri-sel4-ci-riscv-base:latest
     steps:
     - uses: actions/checkout@v4
-    - uses: seL4/ci-actions/standalone-kernel@master
+    - uses: The-Capable-Hub/CHERI-seL4-ci-actions/standalone-kernel@cheri
       with:
         ARCH: ${{ matrix.arch }}
+        ARCH_EXT: ${{ matrix.arch_ext }}
         COMPILER: ${{ matrix.compiler }}
+        DOCKER_BASE_IMG: ${{ matrix.docker_base_img || 'trustworthysystems/sel4:latest' }}

@@ -26,7 +26,8 @@ on:
 jobs:
   xmllint:
     name: XML Lint
-    runs-on: ubuntu-latest
+    runs-on: the-capable-hub-aws-ci
+    container: capablehub/tch-ubuntu-24-builder:latest
     steps:
     - name: apt-get update
       run: sudo apt-get update

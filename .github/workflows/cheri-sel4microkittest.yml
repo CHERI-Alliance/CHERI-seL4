@@ -1,0 +1,23 @@
+# Copyright 2021, Proofcraft Pty Ltd
+#
+# SPDX-License-Identifier: BSD-2-Clause
+
+# cheri-sel4microkittest runs
+
+name: CHERI-seL4MicrokitTest
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'manual/**'
+      - 'LICENSES/**'
+      - '*.md'
+  workflow_dispatch:
+
+jobs:
+  cheri-microkittest:
+    name: CHERI Microkit Tests
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/cheri-sel4microkittest.yml@cheri
+    with:
+      runner: the-capable-hub-aws-ci
+      container-image: trustworthysystems/sel4:latest
