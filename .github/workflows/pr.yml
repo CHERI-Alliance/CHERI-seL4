@@ -11,7 +11,7 @@ on: [pull_request, workflow_dispatch]
 jobs:
   pr-checks:
     name: Checks
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/pr.yml@michaelcobb/capable-hub-ci
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/pr.yml@cheri
     with:
       runner: the-capable-hub-aws-ci
       container-image: capablehub/tch-ubuntu-24-builder:latest
@@ -33,7 +33,7 @@ jobs:
           - arch: X64
             feature: MCS
     steps:
-    - uses: The-Capable-Hub/CHERI-seL4-ci-actions/preprocess@michaelcobb/capable-hub-ci
+    - uses: The-Capable-Hub/CHERI-seL4-ci-actions/preprocess@cheri
       with:
         L4V_ARCH: ${{ matrix.arch }}
         L4V_FEATURES: ${{ matrix.feature }}

@@ -17,7 +17,7 @@ on:
 jobs:
   cheri-microkittest:
     name: CHERI Microkit Tests
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/cheri-sel4microkittest.yml@michaelcobb/capable-hub-ci
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/cheri-sel4microkittest.yml@cheri
     with:
       runner: the-capable-hub-aws-ci
       container-image: trustworthysystems/sel4:latest

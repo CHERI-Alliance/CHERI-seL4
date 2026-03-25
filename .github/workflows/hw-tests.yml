@@ -17,7 +17,7 @@ on:
 jobs:
   sel4test:
     name: seL4Test
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-hw.yml@michaelcobb/capable-hub-ci
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-hw.yml@cheri
     secrets: inherit
     with:
       runner: the-capable-hub-aws-ci
@@ -25,7 +25,7 @@ jobs:
 
   sel4bench:
     name: seL4Bench
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4bench-hw.yml@michaelcobb/capable-hub-ci
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4bench-hw.yml@cheri
     secrets: inherit
     with:
       runner: the-capable-hub-aws-ci

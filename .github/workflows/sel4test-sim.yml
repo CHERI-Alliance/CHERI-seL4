@@ -19,6 +19,6 @@ on:
 jobs:
   sim:
     name: Sim
-    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-sim.yml@michaelcobb/capable-hub-ci
+    uses: The-Capable-Hub/CHERI-seL4-ci-actions/.github/workflows/sel4test-sim.yml@cheri
     with:
       runner: the-capable-hub-aws-ci
