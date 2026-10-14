@@ -426,7 +426,7 @@ static BOOT_CODE bool_t try_init_kernel(
          * kernel window we cannot access it.
          */
         if (dtb_phys_end >= PADDR_TOP) {
-            printf("ERROR: DTB at [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] "
+            printf("ERROR: DTB at [%"SEL4_PRIx_word"..%"SEL4_PRIx_word") "
                    "exceeds PADDR_TOP (%"SEL4_PRIx_word")\n",
                    dtb_phys_addr, dtb_phys_end, PADDR_TOP);
             return false;
@@ -469,14 +469,14 @@ static BOOT_CODE bool_t try_init_kernel(
     word_t extra_bi_size_bits = calculate_extra_bi_size_bits(extra_bi_size);
     v_region_t it_v_reg = {
         .start = ui_v_reg.start,
-        .end   = extra_bi_frame_vptr + BIT(extra_bi_size_bits)
+        .end   = extra_bi_frame_vptr + (extra_bi_size_bits > 0 ? BIT(extra_bi_size_bits) : 0)
     };
     if (it_v_reg.end >= USER_TOP) {
         /* Variable arguments for printf() require well defined integer types to
          * work properly. Unfortunately, the definition of USER_TOP differs
          * between platforms (int, long), so we have to cast here to play safe.
          */
-        printf("ERROR: userland image virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]"
+        printf("ERROR: userland image virt [%"SEL4_PRIx_word"..%"SEL4_PRIx_word")"
                "exceeds USER_TOP (%"SEL4_PRIx_word")\n",
                (word_t)it_v_reg.start, (word_t)it_v_reg.end, (word_t)USER_TOP);
         return false;
@@ -523,12 +523,7 @@ static BOOT_CODE bool_t try_init_kernel(
         extra_bi_offset += dtb_size;
     }
 
-    if (extra_bi_size > extra_bi_offset) {
-        /* provide a chunk for any leftover padding in the extended boot info */
-        header.id = SEL4_BOOTINFO_HEADER_PADDING;
-        header.len = (extra_bi_size - extra_bi_offset);
-        *(seL4_BootInfoHeader *)(rootserver.extra_bi + extra_bi_offset) = header;
-    }
+    assert(extra_bi_size == extra_bi_offset);
 
     if (config_set(CONFIG_TK1_SMMU)) {
         ndks_boot.bi_frame->ioSpaceCaps = create_iospace_caps(root_cnode_cap);

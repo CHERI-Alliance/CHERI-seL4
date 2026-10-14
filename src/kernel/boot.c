@@ -10,6 +10,7 @@
 #include <machine/io.h>
 #include <machine/registerset.h>
 #include <model/statedata.h>
+#include <object/domain.h>
 #include <arch/machine.h>
 #include <arch/kernel/boot.h>
 #include <arch/kernel/vspace.h>
@@ -39,7 +40,7 @@ BOOT_CODE p_region_t get_p_reg_kernel_img(void)
 {
     return (p_region_t) {
         .start = kpptr_to_paddr((const void *)KERNEL_ELF_BASE),
-        .end   = kpptr_to_paddr(ki_end)
+        .end   = kpptr_to_paddr((const void *)KERNEL_ELF_TOP)
     };
 }
 
@@ -140,7 +141,7 @@ BOOT_CODE static bool_t insert_region(region_t reg)
      * don't stop the boot process here, but return an error. The caller should
      * decide how bad this is.
      */
-    printf("no free memory slot left for [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"],"
+    printf("no free memory slot left for [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"),"
            " consider increasing MAX_NUM_FREEMEM_REG (%u)\n",
            reg.start, reg.end, (unsigned int)MAX_NUM_FREEMEM_REG);
 
@@ -298,13 +299,6 @@ compile_assert(num_priorities_valid,
 BOOT_CODE void
 create_domain_cap(cap_t root_cnode_cap)
 {
-    /* Check domain scheduler assumptions. */
-    assert(ksDomScheduleLength > 0);
-    for (word_t i = 0; i < ksDomScheduleLength; i++) {
-        assert(ksDomSchedule[i].domain < CONFIG_NUM_DOMAINS);
-        assert(ksDomSchedule[i].length > 0);
-    }
-
     cap_t cap = cap_domain_cap_new();
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapDomain), cap);
 }
@@ -327,6 +321,15 @@ BOOT_CODE void create_bi_frame_cap(cap_t root_cnode_cap, cap_t pd_cap, vptr_t vp
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapBootInfoFrame), cap);
 }
 
+/**
+ * the size_bits we return is 0 for extra_size = 0
+ * and if it is non-zero the bits are always >= seL4_PageBits
+ * this is relied on in a few places, and gives us code of the form
+ *
+ *     extra_bi_size_bits > 0 ? BIT(extra_bi_size_bits) : 0
+ *
+ * which handles the 0-size case.
+ */
 BOOT_CODE word_t calculate_extra_bi_size_bits(word_t extra_size)
 {
     if (extra_size == 0) {
@@ -361,7 +364,7 @@ BOOT_CODE void populate_bi_frame(node_id_t node_id, word_t num_nodes,
     bi->numIOPTLevels = 0;
     bi->ipcBuffer = (seL4_IPCBuffer * __user)ipcbuf_vptr;
     bi->initThreadCNodeSizeBits = CONFIG_ROOT_CNODE_SIZE_BITS;
-    bi->initThreadDomain = ksDomSchedule[ksDomScheduleIdx].domain;
+    bi->initThreadDomain = 0;
     bi->extraLen = extra_bi_size;
 
     ndks_boot.bi_frame = bi;
@@ -423,7 +426,7 @@ BOOT_CODE create_frames_of_region_ret_t create_frames_of_region(
 
 BOOT_CODE cap_t create_it_asid_pool(cap_t root_cnode_cap)
 {
-    cap_t ap_cap = cap_asid_pool_cap_new(IT_ASID >> asidLowBits, rootserver.asid_pool);
+    cap_t ap_cap = cap_asid_pool_cap_new(ASID_HIGH(IT_ASID) << asidLowBits, rootserver.asid_pool);
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapInitThreadASIDPool), ap_cap);
 
     /* create ASID control cap */
@@ -552,19 +555,11 @@ BOOT_CODE tcb_t *create_initial_thread(cap_t root_cnode_cap, cap_t it_pd_cap, vp
 
     tcb->tcbPriority = seL4_MaxPrio;
     tcb->tcbMCP = seL4_MaxPrio;
-    tcb->tcbDomain = ksDomSchedule[ksDomScheduleIdx].domain;
+    tcb->tcbDomain = 0;
 #ifndef CONFIG_KERNEL_MCS
     setupReplyMaster(tcb);
 #endif
     setThreadState(tcb, ThreadState_Running);
-
-    ksCurDomain = ksDomSchedule[ksDomScheduleIdx].domain;
-#ifdef CONFIG_KERNEL_MCS
-    ksDomainTime = usToTicks(ksDomSchedule[ksDomScheduleIdx].length * US_IN_MS);
-#else
-    ksDomainTime = ksDomSchedule[ksDomScheduleIdx].length;
-#endif
-    assert(ksCurDomain < CONFIG_NUM_DOMAINS && ksDomainTime > 0);
 
 #ifndef CONFIG_KERNEL_MCS
     SMP_COND_STATEMENT(tcb->tcbAffinity = 0);
@@ -586,6 +581,21 @@ BOOT_CODE tcb_t *create_initial_thread(cap_t root_cnode_cap, cap_t it_pd_cap, vp
 }
 
 #ifdef ENABLE_SMP_CLOCK_SYNC_TEST_ON_BOOT
+BOOT_CODE static bool_t hypervisor_present(void)
+{
+#ifdef CONFIG_ARCH_X86
+    uint32_t ebx = x86_cpuid_ebx(KVM_CPUID_SIGNATURE, 0);
+    uint32_t ecx = x86_cpuid_ecx(KVM_CPUID_SIGNATURE, 0);
+    uint32_t edx = x86_cpuid_edx(KVM_CPUID_SIGNATURE, 0);
+
+    if ((ebx == CPUID_KVM_EBX && ecx == CPUID_KVM_ECX && edx == CPUID_KVM_EDX)
+        || (ebx == CPUID_TCG_EBX && ecx == CPUID_TCG_ECX && edx == CPUID_TCG_EDX)) {
+        return true;
+    }
+#endif
+    return false;
+}
+
 BOOT_CODE void clock_sync_test(void)
 {
     ticks_t t, t0;
@@ -601,14 +611,23 @@ BOOT_CODE void clock_sync_test(void)
     t = getCurrentTime();
     printf("clock_sync_test[%d]: t0 = %"PRIu64", t = %"PRIu64", td = %"PRIi64"\n",
            (int)getCurrentCPUIndex(), t0, t, t - t0);
-    assert(t0 <= margin + t && t <= t0 + margin);
+    /*
+     * The test does not consistently work if we are in a virtual machine (e.g
+     * within QEMU) because the measurement cannot distinguish between
+     * interrupted clock reads and out-of-sync clocks.
+     */
+    if (hypervisor_present()) {
+        printf("clock_sync_test[%d]: disabled, detected running as VM\n", (int)getCurrentCPUIndex());
+    } else {
+        assert(t0 <= margin + t && t <= t0 + margin);
+    }
 }
 #endif
 
 BOOT_CODE void init_core_state(tcb_t *scheduler_action)
 {
 #ifdef CONFIG_HAVE_FPU
-    NODE_STATE(ksActiveFPUState) = NULL;
+    NODE_STATE(ksCurFPUOwner) = NULL;
 #endif
 #ifdef CONFIG_DEBUG_BUILD
     /* add initial threads to the debug queue */
@@ -629,6 +648,10 @@ BOOT_CODE void init_core_state(tcb_t *scheduler_action)
     NODE_STATE(ksReleaseQueue.end) = NULL;
     NODE_STATE(ksCurTime) = getCurrentTime();
 #endif
+    /* No need for NODE_STATE() as there is no SMP support for domains */
+    ksCurDomain = 0;
+    ksDomainTime = DSCHED_MAX_DURATION;
+    ksDomSchedule[0] = dschedule_make(0, DSCHED_MAX_DURATION);
 }
 
 /**
@@ -793,7 +816,7 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
             });
             if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
                 printf("ERROR: creation of untypeds for device region #%u at"
-                       " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
+                       " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word") failed\n",
                        (unsigned int)i, reg.start, reg.end);
                 return false;
             }
@@ -802,14 +825,16 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
         start = ndks_boot.reserved[i].end;
     }
 
-    if (start < CONFIG_PADDR_USER_DEVICE_TOP) {
+    if (start <= CONFIG_PADDR_USER_DEVICE_TOP - 1) {
         region_t reg = paddr_to_pptr_reg((p_region_t) {
-            start, CONFIG_PADDR_USER_DEVICE_TOP
+            /* CONFIG_PADDR_USER_DEVICE_TOP cast to paddr_t can be 0.
+             * create_untypeds_for_region() can deal with that correctly. */
+            start, (paddr_t) CONFIG_PADDR_USER_DEVICE_TOP
         });
 
         if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
             printf("ERROR: creation of untypeds for top device region"
-                   " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
+                   " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word") failed\n",
                    reg.start, reg.end);
             return false;
         }
@@ -833,7 +858,7 @@ BOOT_CODE bool_t create_untypeds(cap_t root_cnode_cap,
         ndks_boot.freemem[i] = REG_EMPTY;
         if (!create_untypeds_for_region(root_cnode_cap, false, reg, first_untyped_slot)) {
             printf("ERROR: creation of untypeds for free memory region #%u at"
-                   " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
+                   " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word") failed\n",
                    (unsigned int)i, reg.start, reg.end);
             return false;
         }
@@ -861,17 +886,6 @@ BOOT_CODE void bi_finalise(void)
     };
 }
 
-BOOT_CODE static inline pptr_t ceiling_kernel_window(pptr_t p)
-{
-    /* Adjust address if it exceeds the kernel window
-     * Note that we compare physical address in case of overflow.
-     */
-    if (pptr_to_paddr((void *)p) > PADDR_TOP) {
-        p = PPTR_TOP;
-    }
-    return p;
-}
-
 BOOT_CODE static bool_t check_available_memory(word_t n_available,
                                                const p_region_t *available)
 {
@@ -881,28 +895,29 @@ BOOT_CODE static bool_t check_available_memory(word_t n_available,
         return false;
     }
 
-    printf("available phys memory regions: %"SEL4_PRIu_word"\n", n_available);
+    printf("Available phys memory regions: %"SEL4_PRIu_word"\n", n_available);
     /* Force ordering and exclusivity of available regions. */
     for (word_t i = 0; i < n_available; i++) {
         const p_region_t *r = &available[i];
-        printf("  [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n", r->start, r->end);
+        printf("  [%"SEL4_PRIx_word"..%"SEL4_PRIx_word")\n", r->start, r->end);
 
-        /* Available regions must be sane */
+        /* Available regions must not wrap */
         if (r->start > r->end) {
             printf("ERROR: memory region %"SEL4_PRIu_word" has start > end\n", i);
             return false;
         }
 
-        /* Available regions can't be empty. */
+        /* Available regions must be non-empty. */
         if (r->start == r->end) {
             printf("ERROR: memory region %"SEL4_PRIu_word" empty\n", i);
             return false;
         }
 
         /* Regions must be ordered and must not overlap. Regions are [start..end),
-           so the == case is fine. Directly adjacent regions are allowed. */
+         * so the '==' case is fine. Directly adjacent regions are allowed.
+         */
         if ((i > 0) && (r->start < available[i - 1].end)) {
-            printf("ERROR: memory region %d in wrong order\n", (int)i);
+            printf("ERROR: memory region %"SEL4_PRIu_word" in wrong order\n", i);
             return false;
         }
     }
@@ -910,16 +925,66 @@ BOOT_CODE static bool_t check_available_memory(word_t n_available,
     return true;
 }
 
+/* We can't declare arrays on the stack, so this is space for init_avail_reg()
+ * below to populate and init_freemem() to consume. */
+BOOT_BSS static region_t avail_reg[MAX_NUM_FREEMEM_REG];
+
+/**
+ * Initialise avail_reg with the parts of the available memory regions that are
+ * in the kernel window, converted to kernel pointers. Only this memory can be
+ * used for kernel objects. On 32-bit architectures it is not uncommon for
+ * regions to be completely or partially outside of the kernel window, because
+ * the available address space is small. Memory outside of the kernel window is
+ * discarded here, but it may be made available as device untyped memory instead
+ * if it is not also in a reserved region. Regions must have passed
+ * check_available_memory(). Returns the number of entries populated in
+ * avail_reg.
+ */
+BOOT_CODE static word_t init_avail_reg(word_t n_available,
+                                       const p_region_t *available)
+{
+    word_t cnt = 0;
+    for (word_t i = 0; i < n_available; i++) {
+        const p_region_t *r = &available[i];
+
+        if ((r->start >= PADDR_TOP) || (r->end <= PADDR_BASE)) {
+            printf("  region [%"SEL4_PRIx_word"..%"SEL4_PRIx_word") is outside the kernel"
+                   " window, only potentially available as device untypeds\n", r->start, r->end);
+        } else {
+            p_region_t usable_reg = {
+                .start = MAX(r->start, PADDR_BASE),
+                .end   = MIN(r->end, PADDR_TOP)
+            };
+
+            if (cnt >= ARRAY_SIZE(avail_reg)) {
+                /* No space left in the array, seems MAX_NUM_FREEMEM_REG should
+                 * be increased. Debug builds raise an assert here because this
+                 * is likely a porting issue that should be looked into. Release
+                 * builds will continue booting, but can't use this memory
+                 * region. This might still be sufficient to run.
+                 */
+                printf("  WARNING: cannot use region [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"),"
+                       " avail_reg[] is full\n", r->start, r->end);
+                assert(0);
+            } else {
+                avail_reg[cnt] = paddr_to_pptr_reg(usable_reg);
+                cnt++;
+            }
+        }
+    }
+    return cnt;
+}
+
 
 BOOT_CODE static bool_t check_reserved_memory(word_t n_reserved,
                                               const region_t *reserved)
 {
-    printf("reserved virt address space regions: %"SEL4_PRIu_word"\n",
+    printf("Reserved virt address space regions: %"SEL4_PRIu_word"\n",
            n_reserved);
     /* Force ordering and exclusivity of reserved regions. */
     for (word_t i = 0; i < n_reserved; i++) {
         const region_t *r = &reserved[i];
-        printf("  [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"]\n", r->start, r->end);
+        printf("  [%"SEL4_PRIx_word"..%"SEL4_PRIx_word")\n", r->start, r->end);
 
         /* Reserved regions must be sane, the size is allowed to be zero. */
         if (r->start > r->end) {
@@ -938,9 +1003,6 @@ BOOT_CODE static bool_t check_reserved_memory(word_t n_reserved,
     return true;
 }
 
-/* we can't declare arrays on the stack, so this is space for
- * the function below to use. */
-BOOT_BSS static region_t avail_reg[MAX_NUM_FREEMEM_REG];
 /**
  * Dynamically initialise the available memory on the platform.
  * A region represents an area of memory.
@@ -949,8 +1011,14 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
                               word_t n_reserved, const region_t *reserved,
                               v_region_t it_v_reg, word_t extra_bi_size_bits)
 {
-
     if (!check_available_memory(n_available, available)) {
+        return false;
+    }
+
+    /* After here, avail_reg[0..n_available) are all regions within the kernel window. */
+    n_available = init_avail_reg(n_available, available);
+    if (0 == n_available) {
+        printf("ERROR: no available memory within the kernel window\n");
         return false;
     }
 
@@ -960,13 +1028,6 @@ BOOT_CODE bool_t init_freemem(word_t n_available, const p_region_t *available,
 
     for (word_t i = 0; i < ARRAY_SIZE(ndks_boot.freemem); i++) {
         ndks_boot.freemem[i] = REG_EMPTY;
-    }
-
-    /* convert the available regions to pptrs */
-    for (word_t i = 0; i < n_available; i++) {
-        avail_reg[i] = paddr_to_pptr_reg(available[i]);
-        avail_reg[i].end = ceiling_kernel_window(avail_reg[i].end);
-        avail_reg[i].start = ceiling_kernel_window(avail_reg[i].start);
     }
 
     word_t a = 0;

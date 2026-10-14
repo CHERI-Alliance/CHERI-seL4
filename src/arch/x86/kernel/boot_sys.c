@@ -194,7 +194,7 @@ static BOOT_CODE bool_t add_mem_p_regs(p_region_t reg)
         // Some of the callers round down the end address to
         return true;
     }
-    if (reg.end > PADDR_TOP && reg.start > PADDR_TOP) {
+    if (reg.end > PADDR_TOP && reg.start >= PADDR_TOP) {
         /* Return true here as it's not an error for there to exist memory outside the kernel window,
          * we're just going to ignore it and leave it to be given out as device memory */
         return true;
@@ -204,7 +204,7 @@ static BOOT_CODE bool_t add_mem_p_regs(p_region_t reg)
         return false;
     }
     if (reg.end > PADDR_TOP) {
-        assert(reg.start <= PADDR_TOP);
+        assert(reg.start < PADDR_TOP);
         /* Clamp a region to the top of the kernel window if it extends beyond */
         reg.end = PADDR_TOP;
     }
@@ -671,6 +671,7 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
                 printf("\tPhysical Memory Region from %llx size %llx type %u\n", m->addr, m->size, m->type);
                 if (m->addr != (uint64_t)(word_t)m->addr) {
                     printf("\t\tPhysical memory region not addressable\n");
+                    continue;
                 }
 
                 if (m->type == MULTIBOOT_MMAP_USEABLE_TYPE && m->addr >= HIGHMEM_PADDR) {

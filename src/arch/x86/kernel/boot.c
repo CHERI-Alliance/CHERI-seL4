@@ -104,7 +104,7 @@ BOOT_CODE bool_t init_sys_state(
     cap_t         it_vspace_cap;
     cap_t         it_ap_cap;
     cap_t         ipcbuf_cap;
-    word_t        extra_bi_size = sizeof(seL4_BootInfoHeader);
+    word_t        extra_bi_size = 0;
     pptr_t        extra_bi_offset = 0;
     uint32_t      tsc_freq;
     create_frames_of_region_ret_t create_frames_ret;
@@ -142,7 +142,7 @@ BOOT_CODE bool_t init_sys_state(
 
     /* The region of the initial thread is the user image + ipcbuf and boot info */
     it_v_reg.start = ui_v_reg.start;
-    it_v_reg.end = ROUND_UP(extra_bi_frame_vptr + BIT(extra_bi_size_bits), PAGE_BITS);
+    it_v_reg.end = ROUND_UP(extra_bi_frame_vptr + (extra_bi_size_bits > 0 ? BIT(extra_bi_size_bits) : 0), PAGE_BITS);
 #ifdef CONFIG_IOMMU
     /* calculate the number of io pts before initialising memory */
     if (!vtd_init_num_iopts(num_drhu)) {
@@ -176,7 +176,7 @@ BOOT_CODE bool_t init_sys_state(
     populate_bi_frame(0, ksNumCPUs, ipcbuf_vptr, extra_bi_size);
     region_t extra_bi_region = {
         .start = rootserver.extra_bi,
-        .end = rootserver.extra_bi + BIT(extra_bi_size_bits)
+        .end = rootserver.extra_bi + (extra_bi_size_bits > 0 ? BIT(extra_bi_size_bits) : 0)
     };
 
     /* populate vbe info block */
@@ -225,12 +225,6 @@ BOOT_CODE bool_t init_sys_state(
         *(uint32_t *)(extra_bi_region.start + extra_bi_offset) = tsc_freq;
         extra_bi_offset += 4;
     }
-
-    /* provide a chunk for any leftover padding in the extended boot info */
-    seL4_BootInfoHeader padding_header;
-    padding_header.id = SEL4_BOOTINFO_HEADER_PADDING;
-    padding_header.len = (extra_bi_region.end - extra_bi_region.start) - extra_bi_offset;
-    *(seL4_BootInfoHeader *)(extra_bi_region.start + extra_bi_offset) = padding_header;
 
 #ifdef CONFIG_KERNEL_MCS
     /* set up sched control for each core */
@@ -298,6 +292,12 @@ BOOT_CODE bool_t init_sys_state(
 
     /* create the idle thread */
     create_idle_thread();
+
+    /* copy i387 FPU initial state from FPU */
+    saveFpuState(NODE_STATE(ksIdleThread));
+    x86KSnullFpuState = NODE_STATE(ksIdleThread)->tcbArch.tcbContext.fpuState;
+    /* Check that we can load it: */
+    loadFpuState(NODE_STATE(ksIdleThread));
 
     /* create the initial thread */
     tcb_t *initial = create_initial_thread(root_cnode_cap,

@@ -498,7 +498,7 @@ BOOT_CODE cap_t create_it_address_space(cap_t root_cnode_cap, v_region_t it_v_re
                      rootserver.vspace, /* capVSBasePtr    */
                      1                  /* capVSIsMapped   */
 #ifdef CONFIG_ARM_SMMU
-                     , 0                /* capVSMappedCB   */
+                     , CB_INVALID       /* capVSMappedCB   */
 #endif
                  );
     slot_pos_before = ndks_boot.slot_pos_cur;
@@ -579,8 +579,8 @@ BOOT_CODE void write_it_asid_pool(cap_t it_ap_cap, cap_t it_vspace_cap)
                               , 0, false
 #endif
                           );
-    ap->array[IT_ASID] = asid_map;
-    armKSASIDTable[IT_ASID >> asidLowBits] = ap;
+    ap->array[ASID_LOW(IT_ASID)] = asid_map;
+    armKSASIDTable[ASID_HIGH(IT_ASID)] = ap;
 }
 
 /* ==================== BOOT CODE FINISHES HERE ==================== */
@@ -589,12 +589,12 @@ asid_map_t findMapForASID(asid_t asid)
 {
     asid_pool_t *poolPtr;
 
-    poolPtr = armKSASIDTable[asid >> asidLowBits];
+    poolPtr = armKSASIDTable[ASID_HIGH(asid)];
     if (!poolPtr) {
         return asid_map_asid_map_none_new();
     }
 
-    return poolPtr->array[asid & MASK(asidLowBits)];
+    return poolPtr->array[ASID_LOW(asid)];
 }
 
 static findVSpaceForASID_ret_t findVSpaceForASID(asid_t asid)
@@ -833,19 +833,19 @@ static bool_t setVMRootForFlush(vspace_root_t *vspace, asid_t asid)
 
 static inline asid_pool_t *getPoolPtr(asid_t asid)
 {
-    return armKSASIDTable[asid >> asidLowBits];
+    return armKSASIDTable[ASID_HIGH(asid)];
 }
 
 static inline asid_map_t getASIDMap(asid_pool_t *poolPtr, asid_t asid)
 {
     assert(poolPtr != NULL);
-    return poolPtr->array[asid & MASK(asidLowBits)];
+    return poolPtr->array[ASID_LOW(asid)];
 }
 
 static inline void setASIDMap(asid_pool_t *poolPtr, asid_t asid, asid_map_t asid_map)
 {
     assert(poolPtr != NULL);
-    poolPtr->array[asid & MASK(asidLowBits)] = asid_map;
+    poolPtr->array[ASID_LOW(asid)] = asid_map;
 }
 
 static void invalidateASID(asid_t asid)
@@ -944,10 +944,10 @@ static word_t getASIDBindCB(asid_t asid)
 {
     asid_pool_t *asidPool;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    asid_map_t asid_map = asidPool->array[asid & MASK(asidLowBits)];
+    asid_map_t asid_map = asidPool->array[ASID_LOW(asid)];
     assert(asid_map_get_type(asid_map) == asid_map_asid_map_vspace);
 
     return asid_map_asid_map_vspace_get_bind_cb(asid_map);
@@ -957,10 +957,10 @@ void increaseASIDBindCB(asid_t asid)
 {
     asid_pool_t *asidPool;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    asid_map_t *asid_map = &asidPool->array[asid & MASK(asidLowBits)];
+    asid_map_t *asid_map = &asidPool->array[ASID_LOW(asid)];
     assert(asid_map_ptr_get_type(asid_map) == asid_map_asid_map_vspace);
 
     asid_map_asid_map_vspace_ptr_set_bind_cb(asid_map, asid_map_asid_map_vspace_ptr_get_bind_cb(asid_map) + 1);
@@ -970,10 +970,10 @@ void decreaseASIDBindCB(asid_t asid)
 {
     asid_pool_t *asidPool;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    asid_map_t *asid_map = &asidPool->array[asid & MASK(asidLowBits)];
+    asid_map_t *asid_map = &asidPool->array[ASID_LOW(asid)];
     assert(asid_map_ptr_get_type(asid_map) == asid_map_asid_map_vspace);
 
     asid_map_asid_map_vspace_ptr_set_bind_cb(asid_map, asid_map_asid_map_vspace_ptr_get_bind_cb(asid_map) - 1);
@@ -1092,17 +1092,17 @@ void deleteASID(asid_t asid, vspace_root_t *vspace)
 {
     asid_pool_t *poolPtr;
 
-    poolPtr = armKSASIDTable[asid >> asidLowBits];
+    poolPtr = armKSASIDTable[ASID_HIGH(asid)];
 
     if (poolPtr != NULL) {
-        asid_map_t asid_map = poolPtr->array[asid & MASK(asidLowBits)];
+        asid_map_t asid_map = poolPtr->array[ASID_LOW(asid)];
         if (asid_map_get_type(asid_map) == asid_map_asid_map_vspace &&
             (vspace_root_t *)asid_map_asid_map_vspace_get_vspace_root(asid_map) == vspace) {
             invalidateTLBByASID(asid);
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
             invalidateASIDEntry(asid);
 #endif
-            poolPtr->array[asid & MASK(asidLowBits)] = asid_map_asid_map_none_new();
+            poolPtr->array[ASID_LOW(asid)] = asid_map_asid_map_none_new();
             setVMRoot(NODE_STATE(ksCurThread));
         }
     }
@@ -1114,7 +1114,7 @@ void deleteASIDPool(asid_t asid_base, asid_pool_t *pool)
 
     assert((asid_base & MASK(asidLowBits)) == 0);
 
-    if (armKSASIDTable[asid_base >> asidLowBits] == pool) {
+    if (armKSASIDTable[ASID_HIGH(asid_base)] == pool) {
         for (offset = 0; offset < BIT(asidLowBits); offset++) {
             asid_map_t asid_map = pool->array[offset];
             if (asid_map_get_type(asid_map) == asid_map_asid_map_vspace) {
@@ -1124,7 +1124,7 @@ void deleteASIDPool(asid_t asid_base, asid_pool_t *pool)
 #endif
             }
         }
-        armKSASIDTable[asid_base >> asidLowBits] = NULL;
+        armKSASIDTable[ASID_HIGH(asid_base)] = NULL;
         setVMRoot(NODE_STATE(ksCurThread));
     }
 }
@@ -1156,6 +1156,8 @@ static void doFlush(word_t invLabel, vptr_t start, vptr_t end, paddr_t pstart)
         /* ...then invalidate the corresponding instruction lines
            to point of unification... */
         invalidateCacheRange_I(start, end, pstart);
+        /* ... then wait for the completion of invalidations... */
+        dsb();
         /* ... and ensure new instructions come from fresh cache lines. */
         isb();
         break;
@@ -1315,7 +1317,7 @@ static exception_t performASIDControlInvocation(void *frame, cte_t *slot,
         ), parent, slot);
 
     assert((asid_base & MASK(asidLowBits)) == 0);
-    armKSASIDTable[asid_base >> asidLowBits] = (asid_pool_t *)frame;
+    armKSASIDTable[ASID_HIGH(asid_base)] = (asid_pool_t *)frame;
 
     return EXCEPTION_NONE;
 }
@@ -1838,7 +1840,7 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
             return EXCEPTION_SYSCALL_ERROR;
         }
 
-        pool = armKSASIDTable[cap_asid_pool_cap_get_capASIDBase(cap) >> asidLowBits];
+        pool = armKSASIDTable[ASID_HIGH(cap_asid_pool_cap_get_capASIDBase(cap))];
 
         if (unlikely(!pool)) {
             current_syscall_error.type = seL4_FailedLookup;

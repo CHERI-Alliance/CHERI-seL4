@@ -251,7 +251,6 @@ tcb_queue_t tcbEPAppend(tcb_t *tcb, tcb_queue_t queue)
 
     return queue;
 }
-#endif
 
 /* Remove TCB from an endpoint queue */
 tcb_queue_t tcbEPDequeue(tcb_t *tcb, tcb_queue_t queue)
@@ -270,6 +269,7 @@ tcb_queue_t tcbEPDequeue(tcb_t *tcb, tcb_queue_t queue)
 
     return queue;
 }
+#endif /* CONFIG_KERNEL_MCS */
 
 #ifdef CONFIG_KERNEL_MCS
 
@@ -317,12 +317,11 @@ void tcbReleaseEnqueue(tcb_t *tcb)
     ticks_t new_time;
     tcb_queue_t queue;
 
-    new_time = tcbReadyTime(tcb);
     queue = NODE_STATE_ON_CORE(ksReleaseQueue, tcb->tcbAffinity);
+    new_time = tcbReadyTime(tcb);
 
     if (tcb_queue_empty(queue) || new_time < tcbReadyTime(queue.head)) {
         NODE_STATE_ON_CORE(ksReleaseQueue, tcb->tcbAffinity) = tcb_queue_prepend(queue, tcb);
-        NODE_STATE_ON_CORE(ksReprogram, tcb->tcbAffinity) = true;
     } else {
         if (tcbReadyTime(queue.end) <= new_time) {
             NODE_STATE_ON_CORE(ksReleaseQueue, tcb->tcbAffinity) = tcb_queue_append(queue, tcb);
@@ -334,6 +333,10 @@ void tcbReleaseEnqueue(tcb_t *tcb)
     }
 
     thread_state_ptr_set_tcbInReleaseQueue(&tcb->tcbState, true);
+
+    if (queue.head != NODE_STATE_ON_CORE(ksReleaseQueue, tcb->tcbAffinity).head) {
+        NODE_STATE_ON_CORE(ksReprogram, tcb->tcbAffinity) = true;
+    }
 }
 #endif
 
@@ -794,6 +797,52 @@ static exception_t decodeSetTLSBase(cap_t cap, word_t length, word_t *buffer)
     return invokeSetTLSBase(TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), tls_base);
 }
 
+static void invokeSetFlags(tcb_t *thread, word_t clear, word_t set, bool_t call)
+{
+    tcb_t *cur_thread = NODE_STATE(ksCurThread);
+    word_t flags = thread->tcbFlags;
+
+    flags &= ~clear;
+    flags |= set & seL4_TCBFlag_MASK;
+    thread->tcbFlags = flags;
+
+#ifdef CONFIG_HAVE_FPU
+    if (flags & seL4_TCBFlag_fpuDisabled) {
+        /* Save current FPU state before disabling FPU: */
+        fpuRelease(thread);
+    } else if (thread == cur_thread) {
+        /* Restore FPU here as switchToThread() won't be called: */
+        lazyFPURestore(thread);
+    }
+#endif
+    if (call) {
+        word_t *ipcBuffer = lookupIPCBuffer(true, cur_thread);
+        setRegister(cur_thread, badgeRegister, 0);
+        unsigned int length = setMR(cur_thread, ipcBuffer, 0, flags);
+        setRegister(cur_thread, msgInfoRegister, wordFromMessageInfo(
+                        seL4_MessageInfo_new(0, 0, 0, length)));
+    }
+    setThreadState(cur_thread, ThreadState_Running);
+}
+
+static exception_t decodeSetFlags(cap_t cap, word_t length, bool_t call, word_t *buffer)
+{
+    tcb_t *thread = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
+    if (length < 2) {
+        userError("TCB SetFlags: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    word_t clear = getSyscallArg(0, buffer);
+    word_t set   = getSyscallArg(1, buffer);
+
+    setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
+    invokeSetFlags(thread, clear, set, call);
+    return EXCEPTION_NONE;
+}
+
 /* The following functions sit in the syscall error monad, but include the
  * exception cases for the preemptible bottom end, as they call the invoke
  * functions directly.  This is a significant deviation from the Haskell
@@ -895,6 +944,9 @@ exception_t decodeTCBInvocation(word_t invLabel, word_t length, cap_t cap,
 
     case TCBSetTLSBase:
         return decodeSetTLSBase(cap, length, buffer);
+
+    case TCBSetFlags:
+        return decodeSetFlags(cap, length, call, buffer);
 
     default:
         /* Haskell: "throw IllegalOperation" */
@@ -1037,23 +1089,19 @@ exception_t decodeWriteRegisters(cap_t cap, word_t length, word_t *buffer)
 }
 
 #ifdef CONFIG_KERNEL_MCS
-static bool_t validFaultHandler(cap_t cap)
+bool_t validFaultHandler(cap_t cap)
 {
     switch (cap_get_capType(cap)) {
     case cap_endpoint_cap:
-        if (!cap_endpoint_cap_get_capCanSend(cap) ||
-            (!cap_endpoint_cap_get_capCanGrant(cap) &&
-             !cap_endpoint_cap_get_capCanGrantReply(cap))) {
-            return false;
-        }
-        break;
+        return (cap_endpoint_cap_get_capCanSend(cap) &&
+                (cap_endpoint_cap_get_capCanGrant(cap) ||
+                 cap_endpoint_cap_get_capCanGrantReply(cap)));
     case cap_null_cap:
         /* just has no fault endpoint */
-        break;
+        return true;
     default:
         return false;
     }
-    return true;
 }
 #endif
 
@@ -1266,7 +1314,8 @@ exception_t decodeSetMCPriority(cap_t cap, word_t length, word_t *buffer)
 exception_t decodeSetTimeoutEndpoint(cap_t cap, cte_t *slot)
 {
     if (current_extra_caps.excaprefs[0] == NULL) {
-        userError("TCB SetSchedParams: Truncated message.");
+        userError("TCB SetTimeoutEndpoint: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
@@ -1343,18 +1392,23 @@ exception_t decodeSetSchedParams(cap_t cap, word_t length, word_t *buffer)
 #ifdef CONFIG_KERNEL_MCS
     tcb_t *tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
     sched_context_t *sc = NULL;
+    thread_control_flag_t update_flags = thread_control_sched_update_mcp |
+                                         thread_control_sched_update_priority |
+                                         thread_control_sched_update_fault;
     switch (cap_get_capType(scCap)) {
     case cap_sched_context_cap:
         sc = SC_PTR(cap_sched_context_cap_get_capSCPtr(scCap));
-        if (tcb->tcbSchedContext) {
-            userError("TCB Configure: tcb already has a scheduling context.");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-        if (sc->scTcb) {
-            userError("TCB Configure: sched contextext already bound.");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
+        if (tcb->tcbSchedContext != sc) {
+            if (tcb->tcbSchedContext) {
+                userError("TCB Configure: tcb already has a scheduling context.");
+                current_syscall_error.type = seL4_IllegalOperation;
+                return EXCEPTION_SYSCALL_ERROR;
+            }
+            if (sc->scTcb) {
+                userError("TCB Configure: sched context already bound.");
+                current_syscall_error.type = seL4_IllegalOperation;
+                return EXCEPTION_SYSCALL_ERROR;
+            }
         }
         if (isBlocked(tcb) && !sc_released(sc)) {
             userError("TCB Configure: tcb blocked and scheduling context not schedulable.");
@@ -1376,6 +1430,11 @@ exception_t decodeSetSchedParams(cap_t cap, word_t length, word_t *buffer)
         return EXCEPTION_SYSCALL_ERROR;
     }
 
+    /* If we are setting or unsetting the scheduling context, update the flags */
+    if (tcb->tcbSchedContext != sc) {
+        update_flags |= thread_control_sched_update_sc;
+    }
+
     if (!validFaultHandler(fhCap)) {
         userError("TCB Configure: fault endpoint cap invalid.");
         current_syscall_error.type = seL4_InvalidCapability;
@@ -1389,11 +1448,7 @@ exception_t decodeSetSchedParams(cap_t cap, word_t length, word_t *buffer)
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
                fhCap, fhSlot,
                newMcp, newPrio,
-               sc,
-               thread_control_sched_update_mcp |
-               thread_control_sched_update_priority |
-               thread_control_sched_update_sc |
-               thread_control_sched_update_fault);
+               sc, update_flags);
 #else
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), NULL,
@@ -1575,50 +1630,6 @@ exception_t decodeSetSpace(cap_t cap, word_t length, cte_t *slot, word_t *buffer
                vRootCap, vRootSlot,
                0, cap_null_cap_new(), NULL, thread_control_update_space);
 #endif
-}
-
-exception_t decodeDomainInvocation(word_t invLabel, word_t length, word_t *buffer)
-{
-    word_t domain;
-    cap_t tcap;
-
-    if (unlikely(invLabel != DomainSetSet)) {
-        current_syscall_error.type = seL4_IllegalOperation;
-        return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    if (unlikely(length == 0)) {
-        userError("Domain Configure: Truncated message.");
-        current_syscall_error.type = seL4_TruncatedMessage;
-        return EXCEPTION_SYSCALL_ERROR;
-    } else {
-        domain = getSyscallArg(0, buffer);
-        if (domain >= numDomains) {
-            userError("Domain Configure: invalid domain (%lu >= %u).",
-                      domain, numDomains);
-            current_syscall_error.type = seL4_InvalidArgument;
-            current_syscall_error.invalidArgumentNumber = 0;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-    }
-
-    if (unlikely(current_extra_caps.excaprefs[0] == NULL)) {
-        userError("Domain Configure: Truncated message.");
-        current_syscall_error.type = seL4_TruncatedMessage;
-        return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    tcap = current_extra_caps.excaprefs[0]->cap;
-    if (unlikely(cap_get_capType(tcap) != cap_thread_cap)) {
-        userError("Domain Configure: thread cap required.");
-        current_syscall_error.type = seL4_InvalidArgument;
-        current_syscall_error.invalidArgumentNumber = 1;
-        return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
-    setDomain(TCB_PTR(cap_thread_cap_get_capTCBPtr(tcap)), domain);
-    return EXCEPTION_NONE;
 }
 
 exception_t decodeBindNotification(cap_t cap)
@@ -1882,9 +1893,9 @@ exception_t invokeTCB_ThreadControlSched(tcb_t *target, cte_t *slot,
     }
 
     if (updateFlags & thread_control_sched_update_sc) {
-        if (sc != NULL && sc != target->tcbSchedContext) {
+        if (sc != NULL) {
             schedContext_bindTCB(sc, target);
-        } else if (sc == NULL && target->tcbSchedContext != NULL) {
+        } else if (sc == NULL) {
             schedContext_unbindTCB(target->tcbSchedContext);
         }
     }

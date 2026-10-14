@@ -1,4 +1,7 @@
-<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!--
+  Copyright 2020 Data61, CSIRO (ABN 41 687 119 230)
+  SPDX-License-Identifier: CC-BY-SA-4.0
+-->
 
 # Revision History for seL4
 
@@ -21,16 +24,230 @@ description indicates whether it is SOURCE-COMPATIBLE, BINARY-COMPATIBLE, or BRE
 
 ---
 
-## Upcoming release: BREAKING
+## Upcoming release: BINARY COMPATIBLE
 
 ### Changes
 
-* Added `zynqmp` and `rpi4` to the set of verified AArch64 configs.
-* riscv: Change default cmake options KernelRiscvExtF and KernelRiscvExtD from OFF to ON.
-  Except for RISCV32 with LLVM clang enabled will default both to OFF.
+
+### Upgrade Notes
+---
+
+## 16.0.0 2026-07-22: BREAKING
+
+This release focusses on validating assumptions, improving checks in unverified code, and fixing known issues.
+
+The MCS configuration for 64-bit RISC-V now has a functional correctness proof, and the functional correctness proof for
+MCS on AArch64 is ongoing. A number of the issues fixed below were discovered in these proofs.
+
+### Security-relevant Changes
+
+* Fixed a potential kernel crash in cache maintenance operations on AArch32 (Armv7). When a stale frame capability was
+  used for cache maintenance operations, the kernel would previously not check whether the frame was still mapped or
+  not. Performing cache maintenance on unmapped frames would lead to a fault during kernel execution which would crash
+  the system. This also affects verified AArch32 configurations, because cache maintenance operations are a verification
+  assumption.
+  * Affected configurations: AArch32 configurations of seL4 with hypervisor extensions off (kernel runs in
+    EL1), including verified configurations. Configurations where seL4 runs in EL2 are not affected.
+  * Affected versions: all previous versions
+  * Exploitability: Any user-level thread with sufficient authority to perform all of the following operations can
+    create an unmapped stale frame cap and then trigger the issue by performing a cache maintenance operation on it: map
+    frame, map page table, unmap page table. Microkit and CAmkES systems do not give their component access to these
+    capabilities, but any component with Untyped capabilities could create threads with enough capabilities to trigger
+    the issue.
+  * Severity: Critical. This crashes the system.
+
+* Fixed a VM escape in `restore_vmx()` on x86-64. A malicious virtual machine monitor in cooperation with a malicious
+  guest could trigger the kernel to jump to a user-crafted address on VM entry failure, leading to arbitrary code
+  execution in kernel mode on VT-x for 64-bit guests.
+  * Affected configurations: unverified x86-64 configurations with VT-x and `KernelX86_64VTX64BitGuests`
+    enabled.
+  * Affected versions: 13.0.0, 14.0.0, 15.0.0
+  * Exploitability: any thread with a VCPU capability (usually the VMM) and cooperation from the VM guest can trigger
+    the failure path. A guest VM alone cannot trigger the entry failure, it requires a cooperating VMM.
+  * Severity: Critical. Arbitrary code execution in kernel mode.
+
+* Fixed context-switching leak for register `PAR_EL1` on AArch32 and AArch64 in hypervisor mode and potential
+  overwriting of `PAR_EL1` in VCPU fault handling on AArch64. This also affects verified Arm configurations, because
+  context switching is a verification assumption.
+  * Affected configurations: AArch32 in hypervisor mode and AArch64 in hypervisor mode
+  * Affected versions: all previous versions for AArch32, since 9.0.0 for AArch64
+  * Exploitability: in any EL1 thread, a specifically timed write to `PAR_EL1` or a specifically timed VCPU fault could
+    overwrite the value of `PAR_EL1` in another thread that was context switched after it wrote, but before it was
+    trying to read back the value. This does not affect EL0 threads.
+  * Severity: Medium. Limited compromise of integrity of `PAR_EL1` in EL1 threads.
+
+### Changes
+
+* Add `seL4_DebugGetThreadAffinity()` syscall to return the current affinity of a thread
+  in SMP configurations.
+* Add new libsel4 constant `seL4_UserVSpaceTop` which is a *inclusive* value representing
+  the highest available address available to user level. The existing constant
+  `seL4_UserTop` is a mix of inclusive and exclusive across existing platforms, however,
+  changing this to be consistent would break userspace and require proof updates.
+* Deprecate the existing `seL4_UserTop` define.
+* Fix libsel4 TCB_Write/ReadRegister to respect `count`. Previously TCB_WriteRegisters/ReadRegisters
+  ignored the count parameter and unconditionally copied the entire seL4_UserContext.
+* Add support for GCC 14. In particular, fix a miscompilation of GCC 14.2 for seL4_Yield on RISC-V.
+* Decrease TCB_SIZE_BITS for configs that MCS + SMP + HYP + benchmarking enabled.
+* Make full physical address space available to Untypeds on 32-bit platforms. Affects Arm and RISC-V.
+  This means there should no longer be a cascade of smaller and smaller Untyped caps reaching up to
+  2^32 - 2^seL4_MinUntypedBits.
+* Add further checks and debug printing for memory regions provided at boot (Arm and RISC-V).
+* Add debug warning when IPC messages are truncated
+* MCS: fix missing cap fault info in `sendFaultIPC`
+* MCS: fix missing cap fault info in `lookupReply`
+* MCS: reliably export timer frequency to userspace in cmake
 
 ### Platforms
 
+* Add support for the stm32mp2 SoC family
+* Add support for the bcm2712 SoC (RPI5)
+
+#### X86
+
+* Expose VMX-preemption timer scale MSR via `seL4_X86_VCPU_ReadMSR`.
+* Manual: fix incorrect argument description for X86PageMapEPT.
+* Fix misaligned stack during exception printing in DEBUG configs.
+* Fix potential loss of IRQ notification events in VT-x + SMP configs.
+* Fix register clobber declarations for `restore_vmx()` for clang builds.
+* Fix interrupt source override padding in ACPI parsing
+* Fix PC corruption when exiting kernel lock via `ipiStallCoreCallback()`. When a thread was in the
+  process of entering the kernel lock and at the same time the core was being stalled, the restart
+  program counter of this thread was corrupted.
+* Add validation for BIOS provided MADT entry size, and ensure aligned access.
+* Remove unused trailing padding block in boot info.
+* libsel4: export `seL4_IOPageTableIndexBits` and `seL4_IOPageTableEntryBits`
+* libsel4: export `seL4_X86_IOSpace_CapData` type
+
+#### ARM
+
+* Add support for ARM Cortex-A76
+* Change default for `KernelArmHypEnableVCPUCP14SaveAndRestore` to `OFF` to provide equal defaults for
+  verification and release builds. This affects AArch32/hyp only.
+* Change default for `KernelArmVtimerUpdateVOffset` to `OFF`, which is the setting supported in
+  verification builds and used in most projects.
+* Add debug info printing for invalid vector entry
+* GICv3: enable the system register interface at EL2 in hypervisor configurations. Previously only
+  `ICC_SRE_EL1` was set, but not `ICC_SRE_EL2`. Guest accesses to `ICC_SRE_EL1` now always trap to
+  the kernel and are delivered to the VMM as a VCPU fault.
+* Remove read-only `ISR_EL1` from VCPU context. The register cannot be context-switched by the kernel.
+* Fix missing `dsb` in `seL4_ARM_Page_Unify_Instruction`.
+* MCS: fix missing queue check in MCS/Arm VCPU interaction
+
+### Upgrade Notes
+
+* AArch32 with hypervisor mode enabled only: if the option `KernelArmHypEnableVCPUCP14SaveAndRestore` is required,
+  manually set it to `ON` in the build.
+* User-level allocation libraries for 32-bit platforms need to be robust for Untyped caps whose physical address range
+  reaches the end of the address space. If `base` and `size` are the physical address base of an Untyped cap and its
+  size, patterns such as `addr < base + BIT(size)` are not overflow safe. Change these into `addr <= base + MASK(size)`.
+  (`size` will always be < 32, in particular <= `seL4_MaxUntypedBits`).
+
+---
+
+## 15.0.0 2026-03-31: BREAKING
+
+### Changes
+
+* Add runtime domain schedule configuration.
+  See [RFC-20](https://sel4.github.io/rfcs/implemented/0200-domain-schedules.html).
+* libsel4: make thread-local IPC buffer optional (see `LibSel4UseThreadLocals`).
+* The `KernelAllowSMCCalls` option can now be used for verification builds
+* Update documentation on `seL4_X86_EPT_VMAttributes`
+* Update documentation for `seL4_VMEnter()`
+* Bitfield generator: support for simple arithmetic expressions and new `field_ptr` keyword for reducing the need for
+  `#ifdef` in bitfield definitions
+* Allow threads to enable FPU for their own TCB
+
+#### Platforms
+
+* Add support for Rock3b (AArch64)
+* Add support for Banana Pi BPI-F3 (RISC-V)
+
+#### X86
+
+* Allow user space reads from `VMX_CONTROL_SECONDARY_PROCESSOR_CONTROLS`. Previously only writes were allowed.
+* Do not force 64-bit VCPU mode for `X86_64_VTX_64BIT_GUESTS` to enable guests managing their own mode transition, e.g.
+  for UEFI firmware.
+* Allow user space reads and writes to `VMX_CONTROL_ENTRY_CONTROLS` field, e.g. for enabling long mode and loading of
+  certain MSRs on VM Entry.
+* Allow `CR0.PE` and `CR0.PG` to be cleared if "Unrestricted Guest" mode is supported by the host CPU. This mode allows
+  guest software to run in unpaged protected mode or in real-address mode.
+* Skip the boot time clock sync test on Qemu, because timing is too unreliable under simulation
+* Improve boot code error reporting on UART
+
+#### ARM
+
+* Support for choosing between GICv2 and GICv3 on Qemu
+* Avoid trapping CPACR_EL1 accesses in hypervisor mode
+* Performance improvements for FPU switching
+
+
+### Upgrade Notes
+
+If using domains, replace any custom `domain_schedule.c` file with initialisation code in user space, or use
+corresponding features in user-space frameworks such as Microkit and CAmkES. With MCS, the domain duration is now
+configured in timer ticks instead of microseconds.
+
+---
+
+## 14.0.0 2025-11-25: BREAKING
+
+### Security-relevant Changes
+
+* Fixed a kernel-crashing defect on (unverified) x86 configurations with VT-x enabled where the kernel bookkeeping for
+  VCPU objects was incorrect. The kernel crash can be triggered by retyping multiple VCPU objects from the same Untyped
+  capability or by mixing the right deletion and retyping operations. Thanks to Mathieu Mirmont from Neutrality for
+  reporting and fixing this defect.
+
+  * Affected configurations: only unverified VT-x configurations on x86 platforms are affected.
+  * Affected versions: seL4 versions 4.0.0 to 13.0.0.
+  * Exploitability: Any thread on VT-x configurations with an untyped capability and a CNode capability can exploit
+    this bug. Static CAmKES and Microkit systems do not generally provide either of these to user-level components, but
+    in most dynamic systems, this combination of capabilities would be common for management components that provide
+    object allocation. The defect breaks the usual subsystem isolation properties that verified seL4 configurations
+    provide. In systems that follow the principle of least privilege this combination of capabilities should only be
+    available to trusted allocation components, which strongly reduces the scope of exploitability.
+  * Severity: Critical. This crashes the entire system.
+
+### Changes
+
+* All Arm platforms supported by seL4 now have a verified configuration.
+* Added: build exports an `invocations_all.json` file with syscall invocation numbers.
+* Added option for suppressing generation of config output files in build process
+* Added `--skip-unchanged` option to build process to prevent time stamp update for config output files when these
+  files did not change.
+* Added recording of disabled options in build system config output files. Before, options that were hidden from the
+  CMake GUI due to unsatisfied config_choice conditions were not recorded. After this change, these hidden options are
+  recorded as disabled.
+* Added build system support for Qemu >= 10
+* Change fault based FPU context switching to a TCB flag based approach:
+  New system call `seL4_TCB_SetFlags` and new flag `seL4_TCBFlag_fpuDisabled`.
+  See [RFC-18](https://sel4.github.io/rfcs/implemented/0180-fpu-switching.html).
+* Multiple SMP related bugs fixed.
+* Change point of cache flush from untyped reset to retype. The kernel now flushes the cache only for those object types
+  where a flush is necessary, and only when the object is retyped, not when the untyped cap is reset. This reduces
+  overall need for flushing and delays it to the point of use. This speeds up boot time significantly.
+* Fixed kernel reply protocol for yieldTo (MCS). The kernel would previously for the yieldTo call:
+  * return messages with length field set to 0, even though they had content;
+  * generate a reply for send-only invocations of the system call;
+  * incorrectly indicate success/failure in some circumstances.
+  While these were all incorrect, they would be unlikely to be observed through normal use of libsel4.
+* Fixed TCB_SetSchedParams to match the API reference. TCB_SetSchedParams previously had more lenient checks.
+  Used new checks for simplifying the implementation.
+* Fixed error indication for SetTimeoutEndpoint and improve error message
+* Fixed: when the domain scheduler is used, avoid touching cross-domain state for VCPUs and FPU. Flush VCPU and FPU
+  state on domain switch.
+* Enable building with clang-18 and clang-20 (untested in CI).
+* Improve error message in build system for when invalid platform parameter is provided.
+* Improve boot printing: print half-open regions as `[a..b)`
+
+### Platforms
+
+* Added support for the i.MX93 SoC
+* Added support for the Cheshire platform
+* Added support for the HiFive Premier P550 platform
+* Fixed imx8mq board timer frequency
 * Removed the default settings `KernelArmVtimerUpdateVOffset` and `KernelArmDisableWFIWFETraps` from the platform
   `tqma8xqp1gb`, since they are project specific settings, not platform settings. Add
   `set(KernelArmVtimerUpdateVOffset OFF)` and
@@ -38,6 +255,15 @@ description indicates whether it is SOURCE-COMPATIBLE, BINARY-COMPATIBLE, or BRE
   to your project settings to get the same configuration as before if you are using `tqma8xqp1gb`.
 
 #### Arm
+
+* Support SGIs (software generated interrupts) on platforms with GICv2 or GICv3 in non-SMP configurations. SGIs are
+  intended for signalling other cores when seL4 is used in a multi-kernel setup. On Arm, this is implemented with a new
+  capability `SGISignal`, which can be created from `IRQControl` capabilities with the new IRQ control invocation
+  `ARMIRQIssueSGISignal` for a specific IRQ and target core. The resulting `SGISignal` capability can be invoked like a
+  notification capability that supports only signal/send. SGIs can be received by IRQ notification objects on the target
+  core like other IRQs.
+
+  See also [RFC-17](https://sel4.github.io/rfcs/implemented/0170-multikernel-ipi-api.html)
 
 * Added config option for selecting which thread ID register is used for Kernel TLS syscalls and invocations.
   KernelArmTLSReg can be used to select either `tpidru` or `tpidruro` as the TLS register used for `seL4_TCB_SetTLSBase` and `seL4_SetTLSBase` operations.
@@ -66,7 +292,35 @@ description indicates whether it is SOURCE-COMPATIBLE, BINARY-COMPATIBLE, or BRE
 * Fixed: on aarch32 configurations with hypervisor support, `CNTKCTL` was not saved and restored alongside other virtual
   timer registers. `seL4_VCPUReg_CNTKCTL` has been introduced to mirror `seL4_VCPUReg_CNTKCTL_EL1` from aarch64.
 
+* Fixed VGIC and VPPI maintenance handling on MCS, which allowed a thread to simultaneously be blocked and in the
+  release queue.
+
+* Added port of debug API to AArch64.
+* Added implementation of Split EOI mode for GICv3 for improved interrupt performance.
+* Added `aarch64-elf-` as valid AArch64 toolchain prefix.
+
+#### X86
+
+* Fixed XSAVES option for FPU. It is now possible to enable this for newer x86 CPUs.
+* Fixed: avoid use-after-free if a VCPU with active FPU state gets deleted.
+
+#### RISC-V
+
+* Fixed: TCB size on RISC-V 32-bit when FPU is enabled
+* Changed default cmake options KernelRiscvExtF and KernelRiscvExtD from OFF to ON.
+  Except for RISCV32 with LLVM clang enabled will default both to OFF.
+* Fixed: off-by-1 write for PLIC IRQ priorities. Effect so far only observed on Qemu.
+* Added: catch s-mode traps and halt in debug mode. For debugging only.
+* Added `riscv-none-elf-` as valid RISC-V toolchain prefix
+* Changed treatment of SBI memory: instead of special in-kernel treatment, SBI memory is now a
+  reserved region in the device tree and can therefore be adjusted per platform.
+
 ### Upgrade Notes
+
+Set `seL4_TCBFlag_fpuDisabled` (with the `seL4_TCB_SetFlags` invocation of TCB capabilities) for
+tasks not using the FPU to retain the old context switch performance. The `-mgeneral-regs-only`
+option may be needed to stop the compiler from issuing SIMD instructions to speed up integer
+operations.
 
 ---
 
@@ -917,4 +1171,4 @@ For more information see <https://docs.sel4.systems/Developing/Building>.
   point release once it is fixed.
 
 ---
-For previous releases see <https://docs.sel4.systems/releases/sel4>
+For previous releases see <https://docs.sel4.systems/releases/seL4.html>

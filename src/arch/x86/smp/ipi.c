@@ -38,16 +38,22 @@ void handleRemoteCall(IpiRemoteCall_t call, word_t arg0, word_t arg1, word_t arg
             break;
 
         case IpiRemoteCall_switchFpuOwner:
-            switchLocalFpuOwner((user_fpu_state_t *)arg0);
+            switchLocalFpuOwner((tcb_t *)arg0);
             break;
 
 #ifdef CONFIG_VTX
         case IpiRemoteCall_ClearCurrentVCPU:
             clearCurrentVCPU();
             break;
-        case IpiRemoteCall_VMCheckBoundNotification:
-            VMCheckBoundNotification((tcb_t *)arg0);
+        case IpiRemoteCall_VMCheckBoundNotification: {
+            tcb_t *tcb = (tcb_t *)arg0;
+
+            /* For a running VM notifications are already checked by handleVmexit */
+            if (tcb != NODE_STATE(ksCurThread)) {
+                VMCheckBoundNotification(tcb);
+            }
             break;
+        }
 #endif
         default:
             Mode_handleRemoteCall((IpiModeRemoteCall_t)call, arg0, arg1, arg2);

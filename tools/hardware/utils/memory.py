@@ -4,9 +4,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 
-from typing import List, Set
+from typing import List, Set, Tuple
 
-import hardware
 from hardware.config import Config
 from hardware.device import WrappedNode
 from hardware.fdt import FdtParser
@@ -83,43 +82,36 @@ def reserve_regions(regions: Set[Region], reserved: Set[Region]) -> Set[Region]:
     return ret
 
 
-def align_memory(regions: Set[Region], config: Config) -> List[Region]:
+def align_memory(regions: Set[Region], config: Config) -> Tuple[List[Region], int]:
     ''' Given a set of regions, sort them and align the first so that the
     ELF loader will be able to load the kernel into it. Will return the
     aligned memory region list, a set of any regions of memory that were
     aligned out and the physBase value that the kernel will use. '''
 
     ret = sorted(regions)
-    extra_reserved = set()
 
     if config.get_kernel_phys_align() != 0:
         new = ret[0].align_base(config.get_kernel_phys_align())
-        resv = Region(ret[0].base, new.base - ret[0].base)
-        extra_reserved.add(resv)
         ret[0] = new
 
     physBase = ret[0].base
-    return ret, extra_reserved, physBase
+    return ret, physBase
 
 
-def get_physical_memory(tree: FdtParser, config: Config) -> List[Region]:
+def get_physical_memory(tree: FdtParser, config: Config) -> Tuple[List[Region], int]:
     ''' returns a list of regions representing physical memory as used by the kernel '''
     regions = merge_memory_regions(get_memory_regions(tree))
     reserved = parse_reserved_regions(tree.get_path('/reserved-memory'))
     regions = reserve_regions(regions, reserved)
-    regions, extra_reserved, physBase = align_memory(regions, config)
+    regions, physBase = align_memory(regions, config)
 
-    return regions, reserved.union(extra_reserved), physBase
+    return regions, physBase
 
 
 def get_addrspace_exclude(regions: List[Region], config: Config):
     ''' Returns a list of regions that represents the inverse of the given region list. '''
     ret = set()
-    # We can't create untypeds that exceed the addrspace_max, so we round down to the smallest
-    # untyped size alignment so that the kernel will be able to turn the entire range into untypeds.
-    as_max = hardware.utils.align_down(config.addrspace_max,
-                                       config.get_smallest_kernel_object_alignment())
-    ret.add(Region(0, as_max))
+    ret.add(Region(0, config.addrspace_max))
 
     for reg in regions:
         if type(reg) == KernelRegionGroup:

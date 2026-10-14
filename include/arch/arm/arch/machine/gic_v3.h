@@ -23,6 +23,11 @@
 
 #include "gic_common.h"
 
+/**
+ * Per §4.8 of ARM GICv3/v4 Spec (IHI0069 Hb):
+ *  - higher numbers are lower priorities
+ *  - the GIC must support at least priority bits [7:4], i.e 0x00-0xF0 in steps of 16.
+ **/
 #define GIC_PRI_LOWEST     0xf0
 #define GIC_PRI_IRQ        0xa0
 #define GIC_PRI_HIGHEST    0x80 /* Higher priorities belong to Secure-World */
@@ -31,15 +36,36 @@
 #define GIC_VCPU_MAX_NUM_LR 16
 
 /* Register bits */
+
+/**
+ * The GICD_CTLR distributor control register (per IHI0069 Hb) has various
+ * layouts depending on the security state configuration. seL4 assumes that
+ * we are in:
+ *
+ *   - "access is Non-secure, in a system that supports two Security states", or
+ *   - "When in a system that supports only a single Security state".
+ *
+ * and not "When access is Secure, in a system that supports two Security states".
+ * In both these cases GICD_CTLR_ARE_NS is bit 4. RWP, Enable_G1NS and EnableG0
+ * bits do not move around depending on the layout.
+ */
 #define GICD_CTLR_RWP                BIT(31)
 #define GICD_CTLR_ARE_NS             BIT(4)
-#define GICD_CTLR_ENABLE_G1NS         BIT(1)
+#define GICD_CTLR_ENABLE_G1NS        BIT(1)
 #define GICD_CTLR_ENABLE_G0          BIT(0)
+
 #define GICD_IROUTER_SPI_MODE_ANY    BIT(31)
 
 #define GICD_TYPE_LINESNR 0x01f
 
 #define GICC_SRE_EL1_SRE             BIT(0)
+#define GICC_SRE_EL1_DFB             BIT(1)
+#define GICC_SRE_EL1_DIB             BIT(2)
+
+#define GICC_SRE_EL2_SRE             BIT(0)
+#define GICC_SRE_EL2_DFB             BIT(1)
+#define GICC_SRE_EL2_DIB             BIT(2)
+#define GICC_SRE_EL2_EN              BIT(3)
 
 #define GICR_WAKER_ProcessorSleep    BIT(1)
 #define GICR_WAKER_ChildrenAsleep    BIT(2)
@@ -59,6 +85,7 @@
 #define ICC_CTLR_EL1    "S3_0_C12_C12_4"
 #define ICC_IGRPEN1_EL1 "S3_0_C12_C12_7"
 #define ICC_SRE_EL1     "S3_0_C12_C12_5"
+#define ICC_SRE_EL2     "S3_4_C12_C9_5"
 #define MPIDR           "mpidr_el1"
 /* Virt control registers */
 #define ICH_AP0R0_EL2   "S3_4_C12_C8_0"
@@ -101,6 +128,7 @@
 #define ICC_CTLR_EL1    " p15, 0,  %0, c12,  c12, 4"
 #define ICC_IGRPEN1_EL1 " p15, 0,  %0, c12,  c12, 7"
 #define ICC_SRE_EL1     " p15, 0,  %0, c12,  c12, 5"
+#define ICC_SRE_EL2     " p15, 4,  %0, c12,  c9, 5"
 #define MPIDR           " p15, 0,  %0, c0,  c0, 5"
 
 /* Note: Virtualization control registers not currently defined for AARCH32 */

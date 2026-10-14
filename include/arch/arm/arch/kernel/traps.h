@@ -57,8 +57,6 @@ void c_handle_vcpu_fault(word_t hsr)
 VISIBLE SECTION(".vectors.text");
 #endif /* CONFIG_ARM_HYPERVISOR_SUPPORT */
 
-#ifdef CONFIG_HAVE_FPU
-void c_handle_enfp(void)
-VISIBLE SECTION(".vectors.text");
-#endif /* CONFIG_HAVE_FPU */
-
+#if defined(CONFIG_ARCH_AARCH64) && defined(CONFIG_DEBUG_BUILD)
+void VISIBLE c_handle_invalid_vector_entry(word_t vect_offset, word_t pc);
+#endif

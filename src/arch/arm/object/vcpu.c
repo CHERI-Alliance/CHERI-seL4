@@ -114,11 +114,18 @@ void VPPIEvent(irq_t irq)
      * correctly receive a fault IPC message. This may occur due to the
      * budget check that happens early in the handleInterruptEntry.
      *
-     * If the current thread does *not* have budget this interrupt is
-     * ignored for now. As it is a level-triggered interrupt it shall
-     * be re-raised (and not lost).
+     * If the current thread does *not* have budget, as indicated by its
+     * presence in either the scheduling or release queue, this interrupt
+     * is ignored for now.
+     * As it is a level-triggered interrupt it shall be re-raised
+     * (and not lost).
+     *
+     * Additionally, if we have already received a timeout fault due to
+     * our timeslice having ended, and we have a timeout fault handler for
+     * this thread, we do not want to overwrite that with our VCPU fault.
      */
-    if (thread_state_get_tcbQueued(NODE_STATE(ksCurThread)->tcbState)) {
+    if (thread_state_get_tcbQueued(NODE_STATE(ksCurThread)->tcbState) ||
+        !isSchedulable(NODE_STATE(ksCurThread))) {
         return;
     }
 #endif
@@ -145,7 +152,8 @@ void VGICMaintenance(void)
 
 #ifdef CONFIG_KERNEL_MCS
     /* See VPPIEvent for details on this check. */
-    if (thread_state_get_tcbQueued(NODE_STATE(ksCurThread)->tcbState)) {
+    if (thread_state_get_tcbQueued(NODE_STATE(ksCurThread)->tcbState) ||
+        !isSchedulable(NODE_STATE(ksCurThread))) {
         return;
     }
 #endif
@@ -261,6 +269,21 @@ static void vcpu_invalidate_active(void)
         ARCH_NODE_STATE(armHSVCPUActive) = false;
     }
     ARCH_NODE_STATE(armHSCurVCPU) = NULL;
+}
+
+void vcpu_flush(void)
+{
+    if (ARCH_NODE_STATE(armHSCurVCPU)) {
+        vcpu_save(ARCH_NODE_STATE(armHSCurVCPU), ARCH_NODE_STATE(armHSVCPUActive));
+        vcpu_invalidate_active();
+    }
+}
+
+void vcpu_flush_if_current(tcb_t *tptr)
+{
+    if (tptr->tcbArch.tcbVCPU == ARCH_NODE_STATE(armHSCurVCPU)) {
+        vcpu_flush();
+    }
 }
 
 void vcpu_finalise(vcpu_t *vcpu)

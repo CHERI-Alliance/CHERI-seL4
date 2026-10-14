@@ -591,8 +591,8 @@ BOOT_CODE void activate_kernel_vspace(void)
 BOOT_CODE void write_it_asid_pool(cap_t it_ap_cap, cap_t it_pd_cap)
 {
     asid_pool_t *ap = ASID_POOL_PTR(pptr_of_cap(it_ap_cap));
-    ap->array[IT_ASID] = PDE_PTR(pptr_of_cap(it_pd_cap));
-    armKSASIDTable[IT_ASID >> asidLowBits] = ap;
+    ap->array[ASID_LOW(IT_ASID)] = PDE_PTR(pptr_of_cap(it_pd_cap));
+    armKSASIDTable[ASID_HIGH(IT_ASID)] = ap;
 }
 
 /* ==================== BOOT CODE FINISHES HERE ==================== */
@@ -603,7 +603,7 @@ findPDForASID_ret_t findPDForASID(asid_t asid)
     asid_pool_t *poolPtr;
     pde_t *pd;
 
-    poolPtr = armKSASIDTable[asid >> asidLowBits];
+    poolPtr = armKSASIDTable[ASID_HIGH(asid)];
     if (unlikely(!poolPtr)) {
         current_lookup_fault = lookup_fault_invalid_root_new();
 
@@ -612,7 +612,7 @@ findPDForASID_ret_t findPDForASID(asid_t asid)
         return ret;
     }
 
-    pd = poolPtr->array[asid & MASK(asidLowBits)];
+    pd = poolPtr->array[ASID_LOW(asid)];
     if (unlikely(!pd)) {
         current_lookup_fault = lookup_fault_invalid_root_new();
 
@@ -1075,10 +1075,10 @@ static void invalidateASID(asid_t asid)
     asid_pool_t *asidPool;
     pde_t *pd;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    pd = asidPool->array[asid & MASK(asidLowBits)];
+    pd = asidPool->array[ASID_LOW(asid)];
     assert(pd);
 
     pd[PD_ASID_SLOT] = pde_pde_invalid_new(0, false);
@@ -1089,10 +1089,10 @@ static pde_t PURE loadHWASID(asid_t asid)
     asid_pool_t *asidPool;
     pde_t *pd;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    pd = asidPool->array[asid & MASK(asidLowBits)];
+    pd = asidPool->array[ASID_LOW(asid)];
     assert(pd);
 
     return pd[PD_ASID_SLOT];
@@ -1103,10 +1103,10 @@ static void storeHWASID(asid_t asid, hw_asid_t hw_asid)
     asid_pool_t *asidPool;
     pde_t *pd;
 
-    asidPool = armKSASIDTable[asid >> asidLowBits];
+    asidPool = armKSASIDTable[ASID_HIGH(asid)];
     assert(asidPool);
 
-    pd = asidPool->array[asid & MASK(asidLowBits)];
+    pd = asidPool->array[ASID_LOW(asid)];
     assert(pd);
 
     /* Store HW ASID in the last entry
@@ -1282,14 +1282,14 @@ void deleteASIDPool(asid_t asid_base, asid_pool_t *pool)
     /* Haskell error: "ASID pool's base must be aligned" */
     assert((asid_base & MASK(asidLowBits)) == 0);
 
-    if (armKSASIDTable[asid_base >> asidLowBits] == pool) {
+    if (armKSASIDTable[ASID_HIGH(asid_base)] == pool) {
         for (offset = 0; offset < BIT(asidLowBits); offset++) {
             if (pool->array[offset]) {
                 flushSpace(asid_base + offset);
                 invalidateASIDEntry(asid_base + offset);
             }
         }
-        armKSASIDTable[asid_base >> asidLowBits] = NULL;
+        armKSASIDTable[ASID_HIGH(asid_base)] = NULL;
         setVMRoot(NODE_STATE(ksCurThread));
     }
 }
@@ -1298,12 +1298,12 @@ void deleteASID(asid_t asid, pde_t *pd)
 {
     asid_pool_t *poolPtr;
 
-    poolPtr = armKSASIDTable[asid >> asidLowBits];
+    poolPtr = armKSASIDTable[ASID_HIGH(asid)];
 
-    if (poolPtr != NULL && poolPtr->array[asid & MASK(asidLowBits)] == pd) {
+    if (poolPtr != NULL && poolPtr->array[ASID_LOW(asid)] == pd) {
         flushSpace(asid);
         invalidateASIDEntry(asid);
-        poolPtr->array[asid & MASK(asidLowBits)] = NULL;
+        poolPtr->array[ASID_LOW(asid)] = NULL;
         setVMRoot(NODE_STATE(ksCurThread));
     }
 }
@@ -1788,8 +1788,10 @@ static void doFlush(int invLabel, vptr_t start, vptr_t end, paddr_t pstart)
         /* ...then invalidate the corresponding instruction lines
            to point of unification... */
         invalidateCacheRange_I(start, end, pstart);
-        /* ...then invalidate branch predictors. */
+        /* ...then invalidate branch predictors... */
         branchFlushRange(start, end, pstart);
+        /* ... then wait for the completion of invalidations. */
+        dsb();
         /* Ensure new instructions come from fresh cache lines. */
         isb();
         break;
@@ -1969,7 +1971,7 @@ static exception_t performASIDPoolInvocation(asid_t asid, asid_pool_t *poolPtr,
 {
     cap_page_directory_cap_ptr_set_capPDMappedASID(&pdCapSlot->cap, asid);
     cap_page_directory_cap_ptr_set_capPDIsMapped(&pdCapSlot->cap, 1);
-    poolPtr->array[asid & MASK(asidLowBits)] =
+    poolPtr->array[ASID_LOW(asid)] =
         PDE_PTR(cap_page_directory_cap_get_capPDBasePtr(pdCapSlot->cap));
 
     return EXCEPTION_NONE;
@@ -1991,7 +1993,7 @@ static exception_t performASIDControlInvocation(void *frame, cte_t *slot,
               parent, slot);;
     /* Haskell error: "ASID pool's base must be aligned" */
     assert((asid_base & MASK(asidLowBits)) == 0);
-    armKSASIDTable[asid_base >> asidLowBits] = (asid_pool_t *)frame;
+    armKSASIDTable[ASID_HIGH(asid_base)] = (asid_pool_t *)frame;
 
     return EXCEPTION_NONE;
 }
@@ -2455,6 +2457,20 @@ static exception_t decodeARMFrameInvocation(word_t invLabel, word_t length,
         page_size = 1 << pageBitsForSize(generic_frame_cap_get_capFSize(cap));
         page_base = addrFromPPtr((void *)generic_frame_cap_get_capFBasePtr(cap));
 
+#ifndef CONFIG_ARM_HYPERVISOR_SUPPORT
+        /* When not in hypervisor mode, we flush via user virtual addresses and
+           need to make sure the mapping info in the cap is not stale. */
+        resolve_ret_t resolve_ret = resolveVAddr(pd.pd, vaddr);
+        if (unlikely(!resolve_ret.valid ||
+                     resolve_ret.frameSize != generic_frame_cap_get_capFSize(cap) ||
+                     resolve_ret.frameBase != page_base)) {
+            userError("Page Flush: Attempting to use cap with stale mapping information.");
+            current_syscall_error.type = seL4_InvalidCapability;
+            current_syscall_error.invalidCapNumber = 0;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+#endif
+
         if (start >= page_size || end > page_size) {
             userError("Page Flush: Requested range not inside page");
             current_syscall_error.type = seL4_InvalidArgument;
@@ -2626,8 +2642,7 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
             return EXCEPTION_SYSCALL_ERROR;
         }
 
-        pool = armKSASIDTable[cap_asid_pool_cap_get_capASIDBase(cap) >>
-                                                                     asidLowBits];
+        pool = armKSASIDTable[ASID_HIGH(cap_asid_pool_cap_get_capASIDBase(cap))];
         if (unlikely(!pool)) {
             userError("ASIDPoolAssign: Failed to lookup pool.");
             current_syscall_error.type = seL4_FailedLookup;

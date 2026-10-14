@@ -296,13 +296,13 @@ struct vcpu {
     /* General purpose registers that we have to save and restore as they
      * are not part of the vmcs */
     word_t gp_registers[n_vcpu_gp_register];
-#if defined(ENABLE_SMP_SUPPORT) && defined(CONFIG_ARCH_IA32)
-    word_t kernelSP;
-#endif
 
     /* TCB associated with this VCPU. */
     struct tcb *vcpuTCB;
     bool_t launched;
+
+    /* True if the FPU is used by the VCPU */
+    bool_t fpu_active;
 
     /* Currently assigned VPID */
     vpid_t vpid;
@@ -377,6 +377,8 @@ void vcpu_sysvmenter_reply_to_user(tcb_t *tcb);
 bool_t vtx_init(void);
 exception_t handleVmexit(void);
 exception_t handleVmEntryFail(void);
+void vcpu_fpu_to_guest(tcb_t *tcb, vcpu_t *vcpu);
+void vcpu_fpu_to_host(tcb_t *tcb, vcpu_t *vcpu);
 void restoreVMCS(void);
 void clearCurrentVCPU(void);
 

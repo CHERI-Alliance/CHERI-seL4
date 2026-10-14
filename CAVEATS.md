@@ -9,19 +9,49 @@
 ## Implementation Correctness
 
 The following seL4 architectures have platforms with a C-level functional
-correctness proof. Proof support for further platforms within these
-architectures is on the roadmap and expected in 2025.
+correctness proof. Proof support for further platforms for RISC-V is on
+the roadmap and expected in 2026.
 
-- AArch32: Armv7-a with and without hypervisor extensions, no SMMU, with
+- AArch32: Armv7-a with and without hypervisor extensions, no SMMU, no FPU, with
   fast path
-  - Platforms (non-hyp): `sabre` (no FPU), `imx8mm-evk` (with FPU)
-  - Platforms (hyp, no FPU): `tk1`, `exynos5`
-- AArch64: Armv8-a with hypervisor extensions only, no SMMU, with fast path
-  - Platforms: `tx2`, `zynqmp`, `bcm2711` (rpi4)
-- RISC-V: 64-bit only, no fast path
+  - Platforms (non-hyp):
+    - `sabre`
+    - `am335x`
+    - `bcm2837`
+    - `exynos4`
+    - `exynos5410`
+    - `exynos5422`
+    - `hikey`
+    - `imx8mm`
+    - `omap3`
+    - `tk1`
+    - `zynq7000`
+    - `zynqmp`
+  - Platforms (hyp): `tk1`, `exynos5`, `exynos5410`
+- AArch64: Armv8-a with hypervisor extensions only, no SMMU, with FPU, with fast path
+  - Platforms:
+    - `tx2`
+    - `bcm2711`
+    - `bcm2712`
+    - `hikey`
+    - `imx8mm`
+    - `imx8mq`
+    - `imx93`
+    - `maaxboard`
+    - `odroidc2`
+    - `odroidc4`
+    - `rockpro64`
+    - `stm32mp2`
+    - `tqma`
+    - `tx1`
+    - `ultra96v2`
+    - `zynqmp`
+- RISC-V: 64-bit only, no FPU, no fast path
   - Platforms: `hifive`
-- x64: without VT-x and VT-d, no fast path
+- x64: without VT-x and VT-d, with FPU, no fast path
   - Platforms: `pc99`
+- RISC-V MCS: 64-bit only, no FPU, no fast path, MCS configuration
+  - Platforms: `hifive`
 
 This proof covers the functional behaviour of the C code of the kernel. It does
 not cover machine code, compiler, linker, boot code, cache or TLB management.
@@ -45,14 +75,16 @@ The security property proofs depend on additional assumptions on the correct
 configuration of the system. See the [l4v] repository on GitHub for more
 details.
 
-Similar proofs for AArch64 with hypervisor extensions are in progress.
+For AArch64 with hypervisor extensions and with FPU, the following security
+properties hold:
+
+- integrity (no write without authority)
+
+Confidentiality and non-interference proofs for AArch64 with hypervisor
+extensions are in progress.
 
 For AArch32, there additionally exist proofs for correct user-level system
 initialisation. See the [l4v] repository for details.
-
-Note that seL4 currently performs lazy FPU and VCPU switching, which can
-introduce information flow timing channels. An API-change proposal ([RFC]) to
-improve this behaviour is currently in progress.
 
 ## Verified Configurations
 
@@ -79,10 +111,9 @@ avoided by careful system configuration if low latency is required.
 ## MCS
 
 The MCS configuration of the kernel addresses many of these real-time problems
-and provides principled access control for execution time, but its formal
-verification is currently still in progress. For RISC-V, design-level proofs
-have completed, and C-level proofs are in progress. Similar proofs for AArch64
-are planned.
+and provides principled access control for execution time. For RISC-V, a proof
+of functional correctness from abstract specification to C level has been
+completed. Functional correctness proofs for MCS on AArch64 are in progress.
 
 The MCS configuration is supported by the seL4 foundation and should generally
 be stable, with small API changes to be expected while verification is ongoing
@@ -99,10 +130,7 @@ values.
 ## SMP
 
 A symmetric multi-processor (SMP) configuration for seL4 exists and is supported
-by the seL4 Foundation, but currently without formal verification. While
-generally stable, there are a small number of known open issues, in particular
-when the kernel is compiled with `clang`. We recommend `gcc` for working with
-SMP configurations of seL4.
+by the seL4 Foundation, but currently without formal verification.
 
 The combination of SMP and hypervisor extensions is supported and should be
 generally stable, but like the plain SMP configuration it is not formally

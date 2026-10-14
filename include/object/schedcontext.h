@@ -9,7 +9,7 @@
 #include <api/failures.h>
 #include <object/structures.h>
 
-exception_t decodeSchedContextInvocation(word_t label, cap_t cap, word_t *buffer);
+exception_t decodeSchedContextInvocation(word_t label, sched_context_t *sc, bool_t call);
 
 /* Bind a tcb and a scheduling context. This allows a tcb to enter the scheduler.
  * If the tcb is runnable, insert into scheduler
@@ -64,6 +64,10 @@ void schedContext_donate(sched_context_t *sc, tcb_t *to);
 void schedContext_bindNtfn(sched_context_t *sc, notification_t *ntfn);
 /* unbind scheduling context from a notification */
 void schedContext_unbindNtfn(sched_context_t *sc);
+/* unbind notification from a scheduling context */
+void schedContextMaybeUnbindNtfn(notification_t *ntfnPtr);
+/* unbind scheduling context from a reply */
+void schedContext_unbindReply(sched_context_t *sc);
 
 time_t schedContext_updateConsumed(sched_context_t *sc);
 void schedContext_completeYieldTo(tcb_t *yielder);

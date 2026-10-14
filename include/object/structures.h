@@ -27,11 +27,6 @@ enum irq_state {
 };
 typedef word_t irq_state_t;
 
-typedef struct dschedule {
-    dom_t domain;
-    word_t length;
-} dschedule_t;
-
 enum asidSizeConstants {
     asidHighBits = seL4_NumASIDPoolsBits,
     asidLowBits = seL4_ASIDPoolIndexBits
@@ -242,13 +237,15 @@ typedef struct sched_context sched_context_t;
 typedef struct reply reply_t;
 #endif
 
-/* TCB: size >= 18 words + sizeof(arch_tcb_t) + 1 word on MCS (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
 
     /* Thread state, 3 words */
     thread_state_t tcbState;
+
+    /* Currently only used for seL4_TCBFlag_fpuDisabled */
+    word_t tcbFlags; /* seL4_TCBFlag */
 
     /* Notification that this TCB is bound to. If this is set, when this TCB waits on
      * any sync endpoint, it may receive a signal from a Notification object.
@@ -293,12 +290,17 @@ struct tcb {
     word_t tcbAffinity;
 #endif /* ENABLE_SMP_SUPPORT */
 
-    /* Previous and next pointers for scheduler queues , 2 words */
+    /* Previous and next pointers for scheduler queues, 2 words
+     * also used for endpoint and notification queues in MCS */
     struct tcb *tcbSchedNext;
     struct tcb *tcbSchedPrev;
-    /* Previous and next pointers for endpoint and notification queues, 2 words */
+
+#ifndef CONFIG_KERNEL_MCS
+    /* Previous and next pointers for endpoint and notification queues, 2 words
+     * only for non-MCS configurations */
     struct tcb *tcbEPNext;
     struct tcb *tcbEPPrev;
+#endif
 
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     /* 16 bytes (12 bytes aarch32) */
@@ -306,6 +308,12 @@ struct tcb {
 #endif
 };
 typedef struct tcb tcb_t;
+
+/* To enable more uniform code shape between MCS and non-MCS configurations: */
+#ifdef CONFIG_KERNEL_MCS
+#define tcbEPNext tcbSchedNext
+#define tcbEPPrev tcbSchedPrev
+#endif
 
 #ifdef CONFIG_DEBUG_BUILD
 /* This debug_tcb object is inserted into the 'unused' region of a TCB object

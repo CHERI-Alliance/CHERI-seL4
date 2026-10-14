@@ -16,6 +16,7 @@
 #include <arch/machine/hardware.h>
 #include <arch/machine/registerset.h>
 #include <sel4/arch/constants.h>
+#include <sel4/sel4_arch/constants.h>
 
 enum tcb_arch_cnode_index {
 #ifdef CONFIG_VTX
@@ -54,9 +55,9 @@ typedef struct arch_tcb {
 #define VTD_CT_BITS       8
 #define VTD_CT_SIZE_BITS  (VTD_CT_BITS + VTD_CTE_SIZE_BITS)
 
-#define VTD_PTE_SIZE_BITS 3
+#define VTD_PTE_SIZE_BITS seL4_IOPageTableEntryBits
 #define VTD_PTE_PTR(r)    ((vtd_pte_t*)(r))
-#define VTD_PT_INDEX_BITS       9
+#define VTD_PT_INDEX_BITS seL4_IOPageTableIndexBits
 
 compile_assert(vtd_pt_size_sane, VTD_PT_INDEX_BITS + VTD_PTE_SIZE_BITS == seL4_IOPageTableBits)
 
@@ -112,7 +113,7 @@ compile_assert(vtd_pt_size_sane, VTD_PT_INDEX_BITS + VTD_PTE_SIZE_BITS == seL4_I
 #define EPT_PT_PTR(r)    ((ept_pte_t *)(r))
 #define EPT_PT_REF(p)    ((word_t)(p))
 
-#define VCPU_PTR(r)       ((vcpu_t *)(r))
+#define VCPU_PTR(r)       ((struct vcpu *)(r))
 #define VCPU_REF(p)       ((word_t)(p))
 
 #endif /* CONFIG_VTX */
@@ -225,6 +226,9 @@ static inline bool_t CONST cap_get_archCapIsPhysical(cap_t cap)
         return true;
 
 #ifdef CONFIG_VTX
+    case cap_vcpu_cap:
+        return true;
+
     case cap_ept_pt_cap:
         return true;
 
@@ -278,6 +282,9 @@ static inline void *CONST cap_get_archCapPtr(cap_t cap)
         return ASID_POOL_PTR(cap_asid_pool_cap_get_capASIDPool(cap));
 
 #ifdef CONFIG_VTX
+    case cap_vcpu_cap:
+        return VCPU_PTR(cap_vcpu_cap_get_capVCPUPtr(cap));
+
     case cap_ept_pt_cap:
         return EPT_PT_PTR(cap_ept_pt_cap_get_capPTBasePtr(cap));
 
