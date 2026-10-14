@@ -287,7 +287,10 @@ typedef struct user_fpu_state {
 struct user_context {
     rword_t registers[n_contextRegisters];
 #ifdef CONFIG_HAVE_FPU
+/* No need for padding in the case of CHERI as rword_t is 16-bytes each */
+#if !defined(CONFIG_HAVE_CHERI)
     word_t _padding;
+#endif
     user_fpu_state_t fpuState;
 #endif /* CONFIG_HAVE_FPU */
 #ifdef ARM_BASE_CP14_SAVE_AND_RESTORE
