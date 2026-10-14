@@ -132,7 +132,7 @@ END_FUNC(arm_vector_table)
 BEGIN_FUNC(invalid_vector_entry)
     lsp_i   x19
 #ifdef CONFIG_DEBUG_BUILD
-    mrs     x1, ELR
+    mrs     REG(1), ELR
     bl      c_handle_invalid_vector_entry
 #endif
     b       halt
