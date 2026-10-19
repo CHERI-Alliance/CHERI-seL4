@@ -80,10 +80,11 @@ enum vm_fault_type {
     /* 14 - reserved */
     RISCVStorePageFault = 15,
 #if defined(CONFIG_HAVE_CHERI)
-    /* cheriTODO: The following value will change, update when it is done and supported.
-     * See https://github.com/riscv/riscv-cheri/issues/618
-     */
-    RISCVCheriFault = 0x1c
+    RISCVYInstructionAccessFault = 32,
+    RISCVYLoadAccessFault = 33,
+    RISCVYStoreAccessFault = 34,
+    RISCVYLoadCapabilityFault = 35,
+    RISCVYStorePageFault = 36,
 #endif
                       /* >= 16 reserved */
 };

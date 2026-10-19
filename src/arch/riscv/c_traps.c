@@ -23,12 +23,7 @@
 /** DONT_TRANSLATE */
 void VISIBLE NORETURN restore_user_context(void)
 {
-#if defined(CONFIG_HAVE_CHERI)
-    rword_t cur_thread_reg = (rword_t) __builtin_cheri_address_set(CheriArch_get_pcc(),
-                                                                   (word_t)NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers);
-#else
     word_t cur_thread_reg = (word_t) NODE_STATE(ksCurThread)->tcbArch.tcbContext.registers;
-#endif
 
     c_exit_hook();
 
@@ -53,75 +48,76 @@ void VISIBLE NORETURN restore_user_context(void)
          * and faulting the hybrid kernel. ct0 should already
          * be a valid CHERI cap as above.
          */
-        "modesw.cap                                        \n"
+        "ymodeswy                                          \n"
         ".option push                                      \n"
         ".option capmode                                   \n"
+        "auipc t1, 0                                       \n"
+        MOVE   " t0, %[cur_thread]                         \n"
+        "yaddrw t0, t1, t0                                 \n"
+#else
+        "mv t0, %[cur_thread]       \n"
 #endif
-        MOVE   " "REGN(t0)  ", %[cur_thread]               \n"
-        LOAD_S " "REGN(ra)  ", (0*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(sp)  ", (1*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(gp)  ", (2*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(tp)  ", (3*%[REGSIZE])("REGN(t0)")  \n"
+        LOAD_S " ra, (0*%[REGSIZE])(t0)  \n"
+        LOAD_S " sp, (1*%[REGSIZE])(t0)  \n"
+        LOAD_S " gp, (2*%[REGSIZE])(t0)  \n"
+        LOAD_S " tp, (3*%[REGSIZE])(t0)  \n"
         /* skip t0/x5, t1/x6, they are restored later */
         /* no-op store conditional to clear monitor state */
         /* this may succeed in implementations with very large reservations, but the saved ra is dead */
 #if defined(CONFIG_HAVE_CHERI)
-        "csc.c   zero, c0, ("REGN(t0)")                   \n"
+        "sc.y zero, zero, (t0)\n"
 #else
-        "sc.w zero, zero, ("REGN(t0)")                    \n"
+        "sc.w zero, zero, (t0)\n"
 #endif
-        LOAD_S " "REGN(t2) ", (6*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(s0) ", (7*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(s1) ", (8*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(a0) ", (9*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(a1) ", (10*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a2) ", (11*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a3) ", (12*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a4) ", (13*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a5) ", (14*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a6) ", (15*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(a7) ", (16*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s2) ", (17*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s3) ", (18*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s4) ", (19*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s5) ", (20*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s6) ", (21*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s7) ", (22*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s8) ", (23*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s9) ", (24*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(s10) ", (25*%[REGSIZE])("REGN(t0)")\n"
-        LOAD_S " "REGN(s11) ", (26*%[REGSIZE])("REGN(t0)")\n"
-        LOAD_S " "REGN(t3) ", (27*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(t4) ", (28*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(t5) ", (29*%[REGSIZE])("REGN(t0)") \n"
-        LOAD_S " "REGN(t6) ", (30*%[REGSIZE])("REGN(t0)") \n"
-
+        LOAD_S " t2, (6*%[REGSIZE])(t0)  \n"
+        LOAD_S " s0, (7*%[REGSIZE])(t0)  \n"
+        LOAD_S " s1, (8*%[REGSIZE])(t0)  \n"
+        LOAD_S " a0, (9*%[REGSIZE])(t0)  \n"
+        LOAD_S " a1, (10*%[REGSIZE])(t0) \n"
+        LOAD_S " a2, (11*%[REGSIZE])(t0) \n"
+        LOAD_S " a3, (12*%[REGSIZE])(t0) \n"
+        LOAD_S " a4, (13*%[REGSIZE])(t0) \n"
+        LOAD_S " a5, (14*%[REGSIZE])(t0) \n"
+        LOAD_S " a6, (15*%[REGSIZE])(t0) \n"
+        LOAD_S " a7, (16*%[REGSIZE])(t0) \n"
+        LOAD_S " s2, (17*%[REGSIZE])(t0) \n"
+        LOAD_S " s3, (18*%[REGSIZE])(t0) \n"
+        LOAD_S " s4, (19*%[REGSIZE])(t0) \n"
+        LOAD_S " s5, (20*%[REGSIZE])(t0) \n"
+        LOAD_S " s6, (21*%[REGSIZE])(t0) \n"
+        LOAD_S " s7, (22*%[REGSIZE])(t0) \n"
+        LOAD_S " s8, (23*%[REGSIZE])(t0) \n"
+        LOAD_S " s9, (24*%[REGSIZE])(t0) \n"
+        LOAD_S " s10, (25*%[REGSIZE])(t0)\n"
+        LOAD_S " s11, (26*%[REGSIZE])(t0)\n"
+        LOAD_S " t3, (27*%[REGSIZE])(t0) \n"
+        LOAD_S " t4, (28*%[REGSIZE])(t0) \n"
+        LOAD_S " t5, (29*%[REGSIZE])(t0) \n"
+        LOAD_S " t6, (30*%[REGSIZE])(t0) \n"
         /* get sepc */
-        LOAD_S " "REGN(t1) ", (34*%[REGSIZE])("REGN(t0)") \n"
-        "csrw    "SEPC ", " REGN(t1)                     "\n"
-
+        LOAD_S " t1, (34*%[REGSIZE])(t0)\n"
+        "csrw    sepc, t1  \n"
 #if defined(CONFIG_HAVE_CHERI)
         /* get DDC */
-        LOAD_S " "REGN(t1) ", (35*%[REGSIZE])("REGN(t0)") \n"
-        "csrw     DDC, " REGN(t1)                        "\n"
+        LOAD_S " t1, (35*%[REGSIZE])(t0)\n"
+        "csrw    ddc, t1 \n"
 #endif
-
 #ifndef ENABLE_SMP_SUPPORT
         /* Write back sscratch with cur_thread_reg to get it back on the next trap entry */
-        "csrw    "SSCRATCH ", " REGN(t0)                 "\n"
+        "csrw sscratch, t0         \n"
 #endif
-        LOAD_S " "REGN(t1) ", (32*%[REGSIZE])("REGN(t0)") \n"
-        "csrw sstatus, t1                                 \n"
+        LOAD_S "  t1, (32*%[REGSIZE])(t0) \n"
+        "csrw sstatus, t1\n"
 
-        LOAD_S " "REGN(t1) ", (5*%[REGSIZE])("REGN(t0)")  \n"
-        LOAD_S " "REGN(t0) ", (4*%[REGSIZE])("REGN(t0)")  \n"
-        "sret                                             \n"
+        LOAD_S "  t1, (5*%[REGSIZE])(t0) \n"
+        LOAD_S "  t0, (4*%[REGSIZE])(t0) \n"
+        "sret\n"
 #if defined(CONFIG_HAVE_CHERI)
-        ".option pop                                      \n"
+        ".option pop                     \n"
 #endif
         : /* no output */
         : [REGSIZE] "i"(sizeof(rword_t)),
-        [cur_thread] ASM_REG_CONSTR(cur_thread_reg)
+        [cur_thread] "r"(cur_thread_reg)
         : "memory"
     );
 
@@ -164,7 +160,11 @@ void VISIBLE NORETURN c_handle_exception(void)
     case RISCVStorePageFault:
     case RISCVInstructionPageFault:
 #if defined(CONFIG_HAVE_CHERI)
-    case RISCVCheriFault:
+    case RISCVYInstructionAccessFault:
+    case RISCVYLoadAccessFault:
+    case RISCVYLoadCapabilityFault:
+    case RISCVYStorePageFault:
+    case RISCVYStoreAccessFault:
 #endif
         handleVMFaultEvent(scause);
         break;

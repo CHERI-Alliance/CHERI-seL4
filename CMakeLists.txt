@@ -157,7 +157,7 @@ elseif(KernelArchRiscV)
     endif()
 
     if(KernelRiscvExtY)
-        string(APPEND _riscv_march "_zcherihybrid")
+        string(APPEND _riscv_march "_zyhybrid_zylg")
     endif()
 
     string(APPEND common_flags " -march=${_riscv_march} -mabi=${_riscv_mabi}")

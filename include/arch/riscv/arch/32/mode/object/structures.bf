@@ -93,9 +93,9 @@ tagged_union cap capType {
 
 block VMFault {
     field     address           32
-
 #if defined(CONFIG_HAVE_CHERI)
-    field     FSR               12
+    field     FSR               6
+    padding                     6
 #else
     field     FSR               5
     padding                     7

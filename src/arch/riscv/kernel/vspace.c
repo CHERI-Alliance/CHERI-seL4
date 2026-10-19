@@ -31,7 +31,7 @@
 
 #if defined(CONFIG_HAVE_CHERI)
 /* Allow CHERI capability loads/stores by default */
-#define PTE_CHERI_RISCV_Default_VMAttributes 0x2lu
+#define PTE_CHERI_RISCV_Default_VMAttributes 0x8lu
 #endif
 
 struct resolve_ret {
@@ -451,9 +451,16 @@ exception_t handleVMFault(tcb_t *thread, vm_fault_type_t vm_faultType)
         current_fault = seL4_Fault_VMFault_new(addr, RISCVInstructionAccessFault, true);
         return EXCEPTION_FAULT;
 #if defined(CONFIG_HAVE_CHERI)
-    case RISCVCheriFault:
-        current_fault = seL4_Fault_VMFault_new(addr, (1 << 11) | ((read_stval2() >> 16) & 0xf) << 4 | (read_stval2() & 0xf),
-                                               false);
+    case RISCVYInstructionAccessFault:
+        current_fault = seL4_Fault_VMFault_new(addr, RISCVYInstructionAccessFault, true);
+        return EXCEPTION_FAULT;
+    case RISCVYLoadAccessFault:
+    case RISCVYLoadCapabilityFault:
+        current_fault = seL4_Fault_VMFault_new(addr, RISCVYLoadAccessFault, false);
+        return EXCEPTION_FAULT;
+    case RISCVYStorePageFault:
+    case RISCVYStoreAccessFault:
+        current_fault = seL4_Fault_VMFault_new(addr, RISCVYStoreAccessFault, false);
         return EXCEPTION_FAULT;
 #endif
 

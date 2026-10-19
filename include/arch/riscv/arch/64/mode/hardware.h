@@ -111,8 +111,8 @@
 #endif
 
 #if defined(CONFIG_HAVE_CHERI)
-#define LOAD  lc
-#define STORE sc
+#define LOAD  ly
+#define STORE sy
 /* Integer-width register loads/stores */
 #define ILOAD  ld
 #define ISTORE sd

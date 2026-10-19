@@ -163,14 +163,14 @@ static inline void write_stvec(rword_t value)
 {
     asm volatile(
 #if defined(CONFIG_HAVE_CHERI)
-        "modesw.cap             \n"
+        "ymodeswy               \n"
         ".option push           \n"
         ".option capmode        \n"
 #endif
-        "csrw " STVEC ", %0     \n"
+        "csrw stvec, %0         \n"
 #if defined(CONFIG_HAVE_CHERI)
         ".option pop            \n"
-        "modesw.int             \n"
+        "ymodeswi               \n"
 #endif
         :: ASM_REG_CONSTR "K"(value));
 }
@@ -181,15 +181,6 @@ static inline word_t read_stval(void)
     asm volatile("csrr %0, stval" : "=r"(temp));
     return temp;
 }
-
-#if defined(CONFIG_HAVE_CHERI)
-static inline word_t read_stval2(void)
-{
-    word_t temp;
-    asm volatile("csrr %0, stval2" : "=r"(temp));
-    return temp;
-}
-#endif
 
 static inline word_t read_scause(void)
 {
@@ -203,14 +194,14 @@ static inline rword_t read_sepc(void)
     rword_t temp;
     asm volatile(
 #if defined(CONFIG_HAVE_CHERI)
-        "modesw.cap             \n"
+        "ymodeswy               \n"
         ".option push           \n"
         ".option capmode        \n"
 #endif
-        "csrr %0, " SEPC       "\n"
+        "csrr %0, sepc          \n"
 #if defined(CONFIG_HAVE_CHERI)
         ".option pop            \n"
-        "modesw.int             \n"
+        "ymodeswi               \n"
 #endif
         : "="ASM_REG_CONSTR(temp));
     return temp;
@@ -259,14 +250,14 @@ static inline rword_t read_sscratch(void)
     rword_t temp;
     asm volatile(
 #if defined(CONFIG_HAVE_CHERI)
-        "modesw.cap             \n"
+        "ymodeswy               \n"
         ".option push           \n"
         ".option capmode        \n"
 #endif
-        "csrr  %0, " SSCRATCH  "\n"
+        "csrr  %0, sscratch     \n"
 #if defined(CONFIG_HAVE_CHERI)
         ".option pop            \n"
-        "modesw.int             \n"
+        "ymodeswi               \n"
 #endif
         : "="ASM_REG_CONSTR(temp));
     return temp;
