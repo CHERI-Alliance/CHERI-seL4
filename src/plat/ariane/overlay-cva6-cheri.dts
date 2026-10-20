@@ -1,0 +1,20 @@
+/*
+ * Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+ * Copyright 2026, Capabilities Limited
+ *
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
+/ {
+    /* Reserve top 8 MiB of memory used by CVA6-CHERI for tags
+     */
+    reserved-memory {
+        #address-cells = <0x01>;
+        #size-cells = <0x01>;
+        ranges;
+        cheri_tags@bf800000 {
+            reg = <0xbf800000 0x800000>;
+            no-map;
+        };
+    };
+};

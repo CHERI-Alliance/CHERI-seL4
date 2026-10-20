@@ -14,6 +14,12 @@ if(KernelPlatformAriane)
     config_set(KernelOpenSBIPlatform OPENSBI_PLATFORM "fpga/ariane")
     list(APPEND KernelDTSList "tools/dts/ariane.dts")
     list(APPEND KernelDTSList "src/plat/ariane/overlay-ariane.dts")
+
+    # RVY (CHERI) support on CVA6-CHERI
+    if(KernelRiscvExtY)
+        list(APPEND KernelDTSList "src/plat/ariane/overlay-cva6-cheri.dts")
+    endif()
+
     declare_default_headers(
         MAX_IRQ 30
         TIMER_FREQUENCY 25000000
