@@ -67,8 +67,8 @@
 
 #if defined(CONFIG_HAVE_CHERI)
 /* Full capability-width register loads/stores */
-#define LOAD  lc
-#define STORE sc
+#define LOAD  ly
+#define STORE sy
 /* Integer-width register loads/stores */
 #define ILOAD  lw
 #define ISTORE sw

@@ -193,74 +193,32 @@ static inline rword_t CONST sanitiseRegister(register_t reg, rword_t v, bool_t a
 }
 
 #if defined(CONFIG_HAVE_CHERI)
-/* Registers */
-#define SSCRATCH "sscratchc"
-#define SEPC "sepcc"
-#define STVEC "stvecc"
-
 /* Instructions */
-#define MOVE  "cmv"
-
-/* Register prefixes and assembly constraints */
-#define REG(n) "c" STRINGIFY(n)
-#define REGN(name) "c" STRINGIFY(name)
-#define PTR(n) "x" STRINGIFY(n)
-#define PTRN(name) STRINGIFY(name)
+#define MOVE  "ymv"
 #define ASM_REG_CONSTR "C"
-#define ASM_PTR_CONSTR "r"
 
 #else /* No CHERI */
-
-/* Registers */
-#define SEPC "sepc"
-#define SSCRATCH "sscratch"
-#define STVEC "stvec"
-
 /* Instructions */
 #define MOVE  "mv"
-
-/* Register prefixes and assembly constraints */
-#define REG(n) "x" STRINGIFY(n)
-#define REGN(name) STRINGIFY(name)
-#define PTR(n) "x" STRINGIFY(n)
-#define PTRN(name) STRINGIFY(name)
 #define ASM_REG_CONSTR "r"
-#define ASM_PTR_CONSTR "r"
 #endif
 
 #else /* __ASSEMBLER__ */
+
 #if defined(CONFIG_HAVE_CHERI)
 
-/* Registers */
-#define SSCRATCH sscratchc
-#define SEPC sepcc
-
 /* Instructions */
-#define LOAD  lc
-#define STORE sc
-#define MOVE  cmv
-#define CADDI caddi
-
-#define REG(n) c##n
-#define REGN(name) c##name
-#define PTR(n) x##n
-#define PTRN(name) name
+#define LOAD  ly
+#define STORE sy
+#define MOVE  ymv
+#define ADDI yaddi
 
 #else /* No CHERI */
 
-/* Registers */
-#define SSCRATCH sscratch
-#define SEPC sepc
-
 /* Instructions */
 #define MOVE  mv
-#define CADDI addi
+#define ADDI addi
 
-/* Register prefixes */
-#define REG(n) x##n
-#define REGN(name) name
-#define PTR(n) x##n
-#define PTRN(name) name
 #endif /* CONFIG_HAVE_CHERI */
 
 #endif /* !__ASSEMBLER__ */

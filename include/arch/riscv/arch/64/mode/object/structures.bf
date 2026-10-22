@@ -97,7 +97,8 @@ block VMFault {
 
     padding                     32
 #if defined(CONFIG_HAVE_CHERI)
-    field     FSR               12
+    field     FSR               6
+    padding                     6
 #else
     field     FSR               5
     padding                     7
@@ -128,8 +129,9 @@ block vm_attributes {
 -- the bit shifting manually only for 32-bit and not 64-bit is counter-intuitive.
 block pte {
 #if defined(CONFIG_HAVE_CHERI)
-    field cheri_ext        5
     padding                5
+    field cheri_ext        4
+    padding                1
 #else
     padding                10
 #endif

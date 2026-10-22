@@ -11,7 +11,7 @@
 #define CHERI_CAP_MODE 0
 #define CHERI_INT_MODE 1
 
-#define CSR_SENVCFG_CRE_SHIFT 28
+#define CSR_SENVCFG_CRE_SHIFT 9
 
 void *__capability CheriArch_BuildCap(void *__capability src, word_t base, word_t addr, word_t size,
                                       CheriCapMeta_t meta, int user);
@@ -32,12 +32,12 @@ static inline void *__capability CheriArch_get_pcc(void)
 {
     void *__capability pcc;
     /* cheriTODO: user a compiler builtin once supported */
-    asm volatile("modesw.cap       \n"
+    asm volatile("ymodeswy         \n"
                  ".option push     \n"
                  ".option capmode  \n"
                  "auipc %0, 0      \n"
                  ".option pop      \n"
-                 "modesw.int       \n"
+                 "ymodeswi         \n"
                  :"=C"(pcc)::);
     return pcc;
 }

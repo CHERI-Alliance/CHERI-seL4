@@ -42,10 +42,10 @@ _start:
    */
 .option push
 .option capmode
-  modesw.cap
-  auipc ct0, 0
-  csrw sscratchc, t0
-  modesw.int
+  ymodeswy
+  auipc t0, 0
+  csrw sscratch, t0
+  ymodeswi
 .option pop
 #endif
 
